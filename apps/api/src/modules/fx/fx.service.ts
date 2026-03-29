@@ -1,3 +1,4 @@
+// apps/api/src/modules/fx/fx.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRedis } from '@nestjs-modules/ioredis';

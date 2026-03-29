@@ -1,3 +1,4 @@
+// apps/api/src/modules/fx/fx.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService }       from '@nestjs/config';
 import { getRedisToken }       from '@nestjs-modules/ioredis';

@@ -1,3 +1,4 @@
+// apps/api/src/modules/fx/fx.controller.ts
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { IsEnum, IsNumber, Min } from 'class-validator';
