@@ -1,3 +1,4 @@
+// apps/api/src/database/prisma/schema.prisma
 // ════════════════════════════════════════════════════════════
 //  Elorge Platform — Prisma Database Schema
 //  PostgreSQL 16

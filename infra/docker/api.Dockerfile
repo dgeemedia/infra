@@ -10,15 +10,12 @@ RUN corepack enable && corepack prepare pnpm@10.7.0 --activate
 
 WORKDIR /app
 
-# Copy only what's needed (NOT full repo)
 COPY pnpm-workspace.yaml ./
 COPY package.json pnpm-lock.yaml ./
 COPY turbo.json ./
-
 COPY apps ./apps
 COPY packages ./packages
 
-# Generate minimal workspace for API
 RUN pnpm dlx turbo prune --scope=api --docker
 
 
@@ -31,13 +28,13 @@ RUN corepack enable && corepack prepare pnpm@10.7.0 --activate
 WORKDIR /app
 
 
-# ── Stage 2: Dependencies (from pruned output) ─────────────────
+# ── Stage 2: Dependencies ─────────────────────────────────────
 FROM base AS deps
 
-# Only pruned package.json files
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 
+# Install ALL deps (including devDeps) so prisma binary is available
 RUN pnpm install --frozen-lockfile
 
 
@@ -45,12 +42,15 @@ RUN pnpm install --frozen-lockfile
 FROM base AS development
 
 COPY --from=deps /app/node_modules ./node_modules
-
-# Copy FULL pruned source (not entire repo)
 COPY --from=pruner /app/out/full/ .
 
-WORKDIR /app/apps/api
-RUN pnpm exec prisma generate
+# Copy app-level node_modules that carry the prisma binary
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+
+# Generate Prisma client — binary is guaranteed at the app level
+RUN cd apps/api && \
+    node_modules/.bin/prisma generate \
+      --schema=src/database/prisma/schema.prisma
 
 EXPOSE 3001
 CMD ["pnpm", "run", "dev"]
@@ -61,17 +61,18 @@ FROM base AS builder
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=pruner /app/out/full/ .
+COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 
 # Build shared packages first
 RUN pnpm --filter @elorge/types build || true
 RUN pnpm --filter @elorge/constants build || true
 
-# Prisma
-WORKDIR /app/apps/api
-RUN pnpm exec prisma generate
+# Generate Prisma client
+RUN cd apps/api && \
+    node_modules/.bin/prisma generate \
+      --schema=src/database/prisma/schema.prisma
 
 # Build API
-WORKDIR /app
 RUN pnpm --filter api build
 
 
@@ -85,14 +86,12 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 WORKDIR /app
 
-# Copy pruned manifests
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 
 RUN corepack enable && corepack prepare pnpm@10.7.0 --activate
 RUN pnpm install --prod --frozen-lockfile
 
-# Copy built app
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/packages/types/src ./packages/types/src
@@ -102,5 +101,4 @@ USER nestjs
 WORKDIR /app/apps/api
 
 EXPOSE 3001
-
 CMD ["node", "dist/main.js"]

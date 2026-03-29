@@ -1,67 +1,85 @@
-# ════════════════════════════════════════════════════════════
-#  Elorge Dashboard — Next.js Dockerfile (pnpm)
-#  Uses Next.js standalone output for minimal image size.
-#
-#  Build from monorepo root:
-#    docker build -f infra/docker/dashboard.Dockerfile .
-# ════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════
+# Elorge Dashboard — Dockerfile (Turbo + pnpm + Next.js)
+# ═══════════════════════════════════════════════════════════════
 
-FROM node:22-alpine AS base
+# ── Stage 0: Pruner ───────────────────────────────────────────
+FROM node:22-alpine AS pruner
+
 RUN apk add --no-cache libc6-compat
-RUN corepack enable && corepack prepare pnpm@9.4.0 --activate
-WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.7.0 --activate
 
-# ── Dependencies ──────────────────────────────────────────────
-FROM base AS deps
+WORKDIR /app
 
 COPY pnpm-workspace.yaml ./
 COPY package.json pnpm-lock.yaml ./
-COPY apps/dashboard/package.json     ./apps/dashboard/
-COPY packages/types/package.json     ./packages/types/
-COPY packages/constants/package.json ./packages/constants/
+COPY turbo.json ./
+COPY apps ./apps
+COPY packages ./packages
+
+RUN pnpm dlx turbo prune --scope=dashboard --docker
+
+
+# ── Stage 1: Base ─────────────────────────────────────────────
+FROM node:22-alpine AS base
+
+RUN apk add --no-cache libc6-compat
+RUN corepack enable && corepack prepare pnpm@10.7.0 --activate
+
+WORKDIR /app
+
+
+# ── Stage 2: Dependencies ─────────────────────────────────────
+FROM base AS deps
+
+COPY --from=pruner /app/out/json/ .
+COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 
 RUN pnpm install --frozen-lockfile
 
-# ── Builder ───────────────────────────────────────────────────
+
+# ── Stage 3: Development ──────────────────────────────────────
+FROM base AS development
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=pruner /app/out/full/ .
+
+# Copy app-level node_modules (contains next binary)
+COPY --from=deps /app/apps/dashboard/node_modules ./apps/dashboard/node_modules
+
+EXPOSE 3000
+CMD ["pnpm", "--filter", "dashboard", "run", "dev"]
+
+
+# ── Stage 4: Builder ──────────────────────────────────────────
 FROM base AS builder
 
-WORKDIR /app
-COPY --from=deps /app/node_modules              ./node_modules
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=pruner /app/out/full/ .
 COPY --from=deps /app/apps/dashboard/node_modules ./apps/dashboard/node_modules
-COPY . .
 
-# Build shared packages
-RUN pnpm --filter @elorge/types     run build 2>/dev/null || true
-RUN pnpm --filter @elorge/constants run build 2>/dev/null || true
+RUN pnpm --filter @elorge/types build || true
+RUN pnpm --filter @elorge/constants build || true
+RUN pnpm --filter dashboard build
 
-# Build Next.js (standalone output)
-WORKDIR /app/apps/dashboard
-ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm run build
 
-# ── Production ────────────────────────────────────────────────
+# ── Stage 5: Production ───────────────────────────────────────
 FROM node:22-alpine AS production
 
+RUN apk add --no-cache libc6-compat
+
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser  --system --uid 1001 nextjs
+    adduser --system --uid 1001 nextjs
 
 WORKDIR /app
 
-# Next.js standalone bundles everything — no node_modules needed
-COPY --from=builder --chown=nextjs:nodejs \
-  /app/apps/dashboard/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs \
-  /app/apps/dashboard/.next/static \
-  ./apps/dashboard/.next/static
-COPY --from=builder --chown=nextjs:nodejs \
-  /app/apps/dashboard/public \
-  ./apps/dashboard/public
+COPY --from=builder /app/apps/dashboard/public ./apps/dashboard/public
+COPY --from=builder /app/apps/dashboard/.next/standalone ./
+COPY --from=builder /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 
 USER nextjs
-EXPOSE 3000
 
+EXPOSE 3000
 ENV PORT=3000
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "apps/dashboard/server.js"]

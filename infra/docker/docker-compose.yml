@@ -29,7 +29,7 @@ services:
 
   api:
     build:
-      context: ../../   # KEEP this (monorepo support)
+      context: ../../
       dockerfile: infra/docker/api.Dockerfile
       target: development
     container_name: elorge_api
@@ -45,8 +45,32 @@ services:
       - ../../apps/api/src:/app/apps/api/src
       - ../../packages:/app/packages
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  dashboard:
+    build:
+      context: ../../
+      dockerfile: infra/docker/dashboard.Dockerfile
+      target: development
+    container_name: elorge_dashboard
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: dev_secret_replace_in_production
+    env_file:
+      - ../../apps/dashboard/.env
+    volumes:
+      - ../../apps/dashboard/src:/app/apps/dashboard/src
+      - ../../apps/dashboard/app:/app/apps/dashboard/app
+      - ../../packages:/app/packages
+    depends_on:
+      - api
 
 volumes:
   postgres_data:

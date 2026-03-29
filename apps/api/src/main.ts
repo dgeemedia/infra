@@ -1,3 +1,4 @@
+// apps/api/src/main.ts
 import { NestFactory }          from '@nestjs/core';
 import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
 import { ConfigService }         from '@nestjs/config';

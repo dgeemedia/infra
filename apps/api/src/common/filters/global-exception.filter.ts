@@ -10,6 +10,8 @@ import { Request, Response } from 'express';
 
 import { ERROR_CODES } from '@elorge/constants';
 
+type ErrorCode = typeof ERROR_CODES[keyof typeof ERROR_CODES];
+
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
@@ -20,7 +22,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request  = ctx.getRequest<Request>();
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
-    let code       = ERROR_CODES.INTERNAL_SERVER_ERROR;
+    let code: ErrorCode = ERROR_CODES.INTERNAL_SERVER_ERROR;
     let message    = 'An unexpected error occurred.';
     let errors: unknown = undefined;
 
@@ -30,12 +32,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const res = exceptionResponse as Record<string, unknown>;
-        code    = (res['code'] as string)    ?? this.httpStatusToCode(statusCode);
+        code    = ((res['code'] as string) ?? this.httpStatusToCode(statusCode)) as ErrorCode;
         message = (res['message'] as string) ?? exception.message;
         errors  = res['errors'];
       } else {
         message = exceptionResponse as string;
-        code    = this.httpStatusToCode(statusCode);
+        code    = this.httpStatusToCode(statusCode) as ErrorCode;
       }
     } else if (exception instanceof Error) {
       this.logger.error(

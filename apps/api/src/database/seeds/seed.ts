@@ -1,3 +1,4 @@
+// apps/api/src/database/seeds/seed.ts
 /**
  * Prisma seed script
  * Run: cd apps/api && npx prisma db seed
