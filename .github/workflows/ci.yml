@@ -1,0 +1,98 @@
+name: CI — Lint, Type Check & Test
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: CI Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER:     elorge
+          POSTGRES_PASSWORD: elorge_test
+          POSTGRES_DB:       elorge_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # ── Setup ──────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Shared packages must build first ───────────────────
+      - name: Build shared packages
+        run: npx turbo run build --filter=@elorge/types --filter=@elorge/constants
+
+      # ── Code Quality ───────────────────────────────────────
+      - name: Type check (all packages)
+        run: npm run type-check
+
+      - name: Lint (all packages)
+        run: npm run lint
+
+      - name: Check formatting
+        run: npx prettier --check "**/*.{ts,tsx,json}" --ignore-path .gitignore
+
+      # ── Tests ──────────────────────────────────────────────
+      - name: Run unit tests
+        run: npm run test:ci
+        env:
+          NODE_ENV:     test
+          DATABASE_URL: postgresql://elorge:elorge_test@localhost:5432/elorge_test
+          REDIS_URL:    redis://localhost:6379
+          JWT_SECRET:   ci_test_jwt_secret_minimum_64_characters_long_string_here
+          BANKLY_API_KEY:           test_key
+          BANKLY_CLIENT_ID:         test_id
+          BANKLY_CLIENT_SECRET:     test_secret
+          BANKLY_BASE_URL:          https://api.bankly.ng
+          OPEN_EXCHANGE_RATES_APP_ID: test_key
+          COMPLY_ADVANTAGE_API_KEY: test_key
+
+      # ── Run DB migrations against test DB ─────────────────
+      - name: Run Prisma migrations
+        run: cd apps/api && npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://elorge:elorge_test@localhost:5432/elorge_test
+
+      # ── Upload coverage ────────────────────────────────────
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          directory: ./apps/api/coverage
+          flags:      api
+          fail_ci_if_error: false

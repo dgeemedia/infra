@@ -1,0 +1,69 @@
+# ── Dependencies ────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Environment Variables (NEVER commit these) ───────────────
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.staging
+*.env
+
+# ── Build Outputs ────────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+
+# ── Test & Coverage ──────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ── Turbo ────────────────────────────────────────────────────
+.turbo/
+
+# ── Logs ─────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── Prisma ───────────────────────────────────────────────────
+# Keep schema and migrations, ignore generated client in CI
+apps/api/src/database/prisma/generated/
+
+# ── OS & Editor ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/settings.json
+.vscode/launch.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── AWS & Secrets ────────────────────────────────────────────
+infra/aws/secrets.json
+*.pem
+*.key
+.aws/
+
+# ── Docker ───────────────────────────────────────────────────
+# Keep Dockerfiles, ignore local override files
+docker-compose.override.yml
+
+# ── Misc ─────────────────────────────────────────────────────
+*.tsbuildinfo
+.cache/
+tmp/
+temp/

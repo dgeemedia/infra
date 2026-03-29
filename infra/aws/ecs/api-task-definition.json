@@ -1,0 +1,101 @@
+{
+  "family": "elorge-api",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/elorge-ecs-task-execution-role",
+  "taskRoleArn":      "arn:aws:iam::ACCOUNT_ID:role/elorge-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "elorge-api",
+      "image": "ACCOUNT_ID.dkr.ecr.eu-west-1.amazonaws.com/elorge-api:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3001,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "NODE_ENV",                      "value": "production" },
+        { "name": "PORT",                          "value": "3001" },
+        { "name": "BANKLY_BASE_URL",               "value": "https://api.bankly.ng" },
+        { "name": "FLUTTERWAVE_BASE_URL",           "value": "https://api.flutterwave.com/v3" },
+        { "name": "COMPLY_ADVANTAGE_BASE_URL",     "value": "https://api.complyadvantage.com" },
+        { "name": "FX_CACHE_TTL_SECONDS",          "value": "300" },
+        { "name": "WEBHOOK_MAX_RETRIES",            "value": "5" },
+        { "name": "WEBHOOK_RETRY_DELAY_MS",         "value": "5000" },
+        { "name": "MAX_PAYOUT_AMOUNT_GBP",          "value": "5000" },
+        { "name": "MIN_PAYOUT_AMOUNT_GBP",          "value": "1" },
+        { "name": "API_KEY_PREFIX",                 "value": "el_live_" },
+        { "name": "API_KEY_SANDBOX_PREFIX",         "value": "el_test_" },
+        { "name": "PSP_PROVIDER",                   "value": "bankly" },
+        { "name": "PLATFORM_NAME",                  "value": "Elorge Payout Platform" },
+        { "name": "PLATFORM_EMAIL",                 "value": "platform@elorge.com" },
+        { "name": "SUPPORT_EMAIL",                  "value": "support@elorge.com" }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/database-url"
+        },
+        {
+          "name": "REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/redis-url"
+        },
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/jwt-secret"
+        },
+        {
+          "name": "JWT_EXPIRES_IN",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/jwt-expires-in"
+        },
+        {
+          "name": "BANKLY_CLIENT_ID",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/bankly-client-id"
+        },
+        {
+          "name": "BANKLY_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/bankly-client-secret"
+        },
+        {
+          "name": "BANKLY_WALLET_ACCOUNT",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/bankly-wallet-account"
+        },
+        {
+          "name": "FLUTTERWAVE_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/flutterwave-secret-key"
+        },
+        {
+          "name": "OPEN_EXCHANGE_RATES_APP_ID",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/openexchangerates-key"
+        },
+        {
+          "name": "COMPLY_ADVANTAGE_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/comply-advantage-key"
+        },
+        {
+          "name": "WEBHOOK_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/webhook-secret"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/elorge-api",
+          "awslogs-region":        "eu-west-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"],
+        "interval":    30,
+        "timeout":     10,
+        "retries":     3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "family": "elorge-dashboard",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/elorge-ecs-task-execution-role",
+  "taskRoleArn":      "arn:aws:iam::ACCOUNT_ID:role/elorge-ecs-task-role",
+  "containerDefinitions": [
+    {
+      "name": "elorge-dashboard",
+      "image": "ACCOUNT_ID.dkr.ecr.eu-west-1.amazonaws.com/elorge-dashboard:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "NODE_ENV",                   "value": "production" },
+        { "name": "PORT",                       "value": "3000" },
+        { "name": "NEXT_TELEMETRY_DISABLED",    "value": "1" },
+        { "name": "NEXT_PUBLIC_API_URL",        "value": "https://api.elorge.com" },
+        { "name": "NEXTAUTH_URL",               "value": "https://dashboard.elorge.com" }
+      ],
+      "secrets": [
+        {
+          "name": "NEXTAUTH_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:eu-west-1:ACCOUNT_ID:secret:elorge/production/nextauth-secret"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group":         "/ecs/elorge-dashboard",
+          "awslogs-region":        "eu-west-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command":     ["CMD-SHELL", "wget -qO- http://localhost:3000/ || exit 1"],
+        "interval":    30,
+        "timeout":     10,
+        "retries":     3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

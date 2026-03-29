@@ -1,0 +1,32 @@
+{
+  "name": "elorge-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.7.0",
+  "description": "Elorge Technologies — Partner Payout Platform Monorepo",
+  "scripts": {
+    "dev":        "turbo run dev",
+    "build":      "turbo run build",
+    "test":       "turbo run test",
+    "test:ci":    "turbo run test -- --ci --coverage",
+    "lint":       "turbo run lint",
+    "lint:fix":   "turbo run lint:fix",
+    "type-check": "turbo run type-check",
+    "clean":      "turbo run clean && rm -rf node_modules",
+    "format":     "prettier --write \"**/*.{ts,tsx,json,md}\" --ignore-path .gitignore"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.5",
+    "eslint": "^8.57.0",
+    "prettier": "^3.3.2",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  }
+}

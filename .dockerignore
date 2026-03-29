@@ -1,0 +1,52 @@
+# ── Node modules (biggest offender — never send these) ────────
+**/node_modules
+**/.pnpm-store
+
+# ── Build outputs ──────────────────────────────────────────────
+**/dist
+**/.next
+**/out
+**/build
+
+# ── Test & Coverage ────────────────────────────────────────────
+**/coverage
+**/.nyc_output
+
+# ── Turbo cache ────────────────────────────────────────────────
+**/.turbo
+
+# ── Git ────────────────────────────────────────────────────────
+.git
+.gitignore
+
+# ── Environment files (secrets must never enter image) ────────
+**/.env
+**/.env.*
+!**/.env.example
+
+# ── Logs ──────────────────────────────────────────────────────
+**/logs
+**/*.log
+
+# ── OS & Editor ───────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# ── Docker files themselves (not needed in image) ─────────────
+infra/docker
+infra/aws
+infra/terraform
+
+# ── Docs ──────────────────────────────────────────────────────
+docs
+*.md
+!apps/api/README.md
+
+# ── Prisma generated client (rebuilt inside image) ────────────
+**/generated
+
+# ── Test files (not needed in production image) ───────────────
+**/*.spec.ts
+**/*.test.ts

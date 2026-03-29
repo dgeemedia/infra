@@ -1,0 +1,74 @@
+name: Deploy Dashboard → Vercel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/dashboard/**'
+      - 'packages/**'
+      - '.github/workflows/deploy-dashboard.yml'
+
+concurrency:
+  group: deploy-dashboard
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build & Deploy Dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      # ── Setup ──────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Build shared packages first ────────────────────────
+      - name: Build shared packages
+        run: npx turbo run build --filter=@elorge/types --filter=@elorge/constants
+
+      # ── Lint & Type Check ──────────────────────────────────
+      - name: Type check dashboard
+        run: cd apps/dashboard && npx tsc --noEmit
+
+      - name: Lint dashboard
+        run: cd apps/dashboard && npx eslint src/
+
+      # ── Deploy to Vercel ───────────────────────────────────
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel environment variables
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/dashboard
+
+      - name: Build dashboard for production
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: apps/dashboard
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.PRODUCTION_API_URL }}
+
+      - name: Deploy to Vercel production
+        id: deploy
+        run: |
+          URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$URL" >> $GITHUB_OUTPUT
+        working-directory: apps/dashboard
+
+      # ── Notify ────────────────────────────────────────────
+      - name: Deployment summary
+        run: |
+          echo "✅ Elorge Dashboard deployed successfully"
+          echo "URL: ${{ steps.deploy.outputs.url }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Deployed by: ${{ github.actor }}"
