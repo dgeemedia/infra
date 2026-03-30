@@ -1,3 +1,4 @@
+// apps/api/src/common/interceptors/logging.interceptor.ts
 import {
   CallHandler,
   ExecutionContext,
@@ -15,14 +16,14 @@ export class LoggingInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request   = context.switchToHttp().getRequest<Request>();
     const { method, url } = request;
-    const partnerId = (request['partner'] as { id?: string } | undefined)?.id ?? 'anonymous';
+    const partnerId = request.partner?.id ?? 'anonymous';
     const startTime = Date.now();
 
     return next.handle().pipe(
       tap({
         next: () => {
-          const response  = context.switchToHttp().getResponse<{ statusCode: number }>();
-          const duration  = Date.now() - startTime;
+          const response = context.switchToHttp().getResponse<{ statusCode: number }>();
+          const duration = Date.now() - startTime;
           this.logger.log(
             `${method} ${url} → ${response.statusCode} [${duration}ms] partner=${partnerId}`,
           );

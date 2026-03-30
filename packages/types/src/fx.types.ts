@@ -1,3 +1,4 @@
+// packages/types/src/fx.types.ts
 import type { Currency } from '@elorge/constants';
 
 // ── Rate Quote ────────────────────────────────────────────

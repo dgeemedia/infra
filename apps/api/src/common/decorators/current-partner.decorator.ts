@@ -1,18 +1,11 @@
+// apps/api/src/common/decorators/current-partner.decorator.ts
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { Request } from 'express';
+import type { AuthenticatedPartner } from '@elorge/types';
 
-import type { Partner } from '@elorge/types';
-
-/**
- * Extracts the authenticated partner from the request.
- * Set by ApiKeyGuard after successful validation.
- *
- * Usage in controller:
- *   async createPayout(@CurrentPartner() partner: Partner) { ... }
- */
 export const CurrentPartner = createParamDecorator(
-  (_data: unknown, ctx: ExecutionContext): Partner => {
+  (_data: unknown, ctx: ExecutionContext): AuthenticatedPartner => {
     const request = ctx.switchToHttp().getRequest<Request>();
-    return request['partner'] as Partner;
+    return request.partner as AuthenticatedPartner;
   },
 );

@@ -1,3 +1,4 @@
+// packages/types/src/webhook.types.ts
 import type { WebhookEventType } from './partner.types';
 import type { PayoutStatus } from '@elorge/constants';
 

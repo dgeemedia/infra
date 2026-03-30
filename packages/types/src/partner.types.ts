@@ -1,13 +1,26 @@
+// packages/types/src/partner.types.ts
+
 // ── Partner ────────────────────────────────────────────────
 export interface Partner {
   id:          string;
-  name:        string;        // e.g. 'FinestPay UK'
-  email:       string;        // primary contact email
-  country:     string;        // ISO 3166-1 alpha-2 e.g. 'GB'
+  name:        string;
+  email:       string;
+  country:     string;
   status:      PartnerStatus;
-  webhookUrl?: string;        // partner's registered webhook endpoint
+  webhookUrl?: string;
   createdAt:   string;
   updatedAt:   string;
+}
+
+// ── Authenticated Partner (attached to request by ApiKeyGuard) ─
+export interface AuthenticatedPartner {
+  id:          string;
+  name:        string;
+  email:       string;
+  country:     string;
+  status:      PartnerStatus;
+  apiKeyId:    string;
+  environment: 'live' | 'sandbox';
 }
 
 export type PartnerStatus = 'ACTIVE' | 'SUSPENDED' | 'PENDING_REVIEW';
@@ -16,17 +29,16 @@ export type PartnerStatus = 'ACTIVE' | 'SUSPENDED' | 'PENDING_REVIEW';
 export interface ApiKey {
   id:          string;
   partnerId:   string;
-  label:       string;        // human-readable name e.g. 'Production Key'
-  keyPreview:  string;        // masked key e.g. 'el_live_xxxx...abc'
+  label:       string;
+  keyPreview:  string;
   environment: 'live' | 'sandbox';
   lastUsedAt?: string;
   createdAt:   string;
-  revokedAt?:  string;        // null if still active
+  revokedAt?:  string;
 }
 
-// ── Shown only once at creation ───────────────────────────
 export interface ApiKeyCreated extends ApiKey {
-  fullKey: string;            // only returned once — store it securely
+  fullKey: string;
 }
 
 // ── Webhook Config ─────────────────────────────────────────
@@ -36,7 +48,7 @@ export interface WebhookConfig {
   url:       string;
   events:    WebhookEventType[];
   isActive:  boolean;
-  secret:    string;          // HMAC secret for signature verification
+  secret:    string;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,19 +59,19 @@ export type WebhookEventType =
   | 'payout.processing'
   | 'payout.flagged';
 
-// ── Partner Stats (for dashboard overview) ─────────────────
+// ── Partner Stats ──────────────────────────────────────────
 export interface PartnerStats {
-  totalPayouts:       number;
-  successfulPayouts:  number;
-  failedPayouts:      number;
-  totalVolumeGbp:     number;
-  totalVolumaNgn:     number;
-  successRate:        number;  // percentage 0-100
-  todayPayouts:       number;
-  todayVolumeGbp:     number;
+  totalPayouts:      number;
+  successfulPayouts: number;
+  failedPayouts:     number;
+  totalVolumeGbp:    number;
+  totalVolumaNgn:    number;
+  successRate:       number;
+  todayPayouts:      number;
+  todayVolumeGbp:    number;
 }
 
-// ── Create / Update DTOs ──────────────────────────────────
+// ── DTOs ──────────────────────────────────────────────────
 export interface CreatePartnerDto {
   name:    string;
   email:   string;

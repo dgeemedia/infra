@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════
-# Elorge Dashboard — Dockerfile (Turbo + pnpm + Next.js)
+# Elorge Dashboard — Dockerfile
 # ═══════════════════════════════════════════════════════════════
 
 # ── Stage 0: Pruner ───────────────────────────────────────────
@@ -13,6 +13,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml ./
 COPY package.json pnpm-lock.yaml ./
 COPY turbo.json ./
+COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
 
@@ -40,14 +41,21 @@ RUN pnpm install --frozen-lockfile
 # ── Stage 3: Development ──────────────────────────────────────
 FROM base AS development
 
+# Root node_modules
 COPY --from=deps /app/node_modules ./node_modules
+
+# Full pruned source
 COPY --from=pruner /app/out/full/ .
 
-# Copy app-level node_modules (contains next binary)
+# App-level node_modules (contains next binary)
 COPY --from=deps /app/apps/dashboard/node_modules ./apps/dashboard/node_modules
 
+# tsconfig.base.json at monorepo root (dashboard tsconfig extends ../../tsconfig.base.json)
+COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
+
+WORKDIR /app/apps/dashboard
 EXPOSE 3000
-CMD ["pnpm", "--filter", "dashboard", "run", "dev"]
+CMD ["node_modules/.bin/next", "dev", "-p", "3000"]
 
 
 # ── Stage 4: Builder ──────────────────────────────────────────
@@ -56,17 +64,19 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=pruner /app/out/full/ .
 COPY --from=deps /app/apps/dashboard/node_modules ./apps/dashboard/node_modules
+COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 
 RUN pnpm --filter @elorge/types build || true
 RUN pnpm --filter @elorge/constants build || true
-RUN pnpm --filter dashboard build
+
+WORKDIR /app/apps/dashboard
+RUN node_modules/.bin/next build
 
 
 # ── Stage 5: Production ───────────────────────────────────────
 FROM node:22-alpine AS production
 
 RUN apk add --no-cache libc6-compat
-
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
@@ -77,9 +87,7 @@ COPY --from=builder /app/apps/dashboard/.next/standalone ./
 COPY --from=builder /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 
 USER nextjs
-
 EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-
 CMD ["node", "apps/dashboard/server.js"]

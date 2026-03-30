@@ -1,8 +1,8 @@
 # ═══════════════════════════════════════════════════════════════
-# Elorge API — Optimized Dockerfile (Turbo + pnpm)
+# Elorge API — Dockerfile
 # ═══════════════════════════════════════════════════════════════
 
-# ── Stage 0: Pruner (Turbo) ───────────────────────────────────
+# ── Stage 0: Pruner ───────────────────────────────────────────
 FROM node:22-alpine AS pruner
 
 RUN apk add --no-cache libc6-compat
@@ -13,6 +13,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml ./
 COPY package.json pnpm-lock.yaml ./
 COPY turbo.json ./
+COPY tsconfig.base.json ./
 COPY apps ./apps
 COPY packages ./packages
 
@@ -34,26 +35,35 @@ FROM base AS deps
 COPY --from=pruner /app/out/json/ .
 COPY --from=pruner /app/out/pnpm-lock.yaml ./pnpm-lock.yaml
 
-# Install ALL deps (including devDeps) so prisma binary is available
 RUN pnpm install --frozen-lockfile
 
 
 # ── Stage 3: Development ──────────────────────────────────────
 FROM base AS development
 
+# Root node_modules
 COPY --from=deps /app/node_modules ./node_modules
+
+# Full pruned source
 COPY --from=pruner /app/out/full/ .
 
-# Copy app-level node_modules that carry the prisma binary
+# App-level node_modules (contains nest, prisma binaries)
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 
-# Generate Prisma client — binary is guaranteed at the app level
-RUN cd apps/api && \
+# tsconfig.base.json must be at monorepo root
+COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
+
+# Generate Prisma client
+RUN cd /app/apps/api && \
     node_modules/.bin/prisma generate \
       --schema=src/database/prisma/schema.prisma
 
+# Build first so dist/main.js exists before watch starts
+RUN cd /app/apps/api && node_modules/.bin/nest build
+
+WORKDIR /app/apps/api
 EXPOSE 3001
-CMD ["pnpm", "run", "dev"]
+CMD ["node_modules/.bin/nest", "start", "--watch", "--preserveWatchOutput"]
 
 
 # ── Stage 4: Builder ──────────────────────────────────────────
@@ -62,25 +72,19 @@ FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=pruner /app/out/full/ .
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 
-# Build shared packages first
-RUN pnpm --filter @elorge/types build || true
-RUN pnpm --filter @elorge/constants build || true
-
-# Generate Prisma client
-RUN cd apps/api && \
+RUN cd /app/apps/api && \
     node_modules/.bin/prisma generate \
       --schema=src/database/prisma/schema.prisma
 
-# Build API
-RUN pnpm --filter api build
+RUN cd /app/apps/api && node_modules/.bin/nest build
 
 
 # ── Stage 5: Production ───────────────────────────────────────
 FROM node:22-alpine AS production
 
 RUN apk add --no-cache libc6-compat openssl
-
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nestjs
 
@@ -99,6 +103,5 @@ COPY --from=builder /app/packages/constants/src ./packages/constants/src
 
 USER nestjs
 WORKDIR /app/apps/api
-
 EXPOSE 3001
 CMD ["node", "dist/main.js"]

@@ -1,19 +1,12 @@
+// apps/api/src/modules/webhooks/webhooks.controller.ts
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsEnum, IsUrl } from 'class-validator';
 
-import type { Partner, WebhookEventType } from '@elorge/types';
-
+import type { AuthenticatedPartner, WebhookEventType } from '@elorge/types';
 import { ApiKeyGuard }    from '../../common/guards/api-key.guard';
 import { CurrentPartner } from '../../common/decorators/current-partner.decorator';
 import { WebhooksService } from './webhooks.service';
-
-const WEBHOOK_EVENTS = [
-  'payout.delivered',
-  'payout.failed',
-  'payout.processing',
-  'payout.flagged',
-] as const;
 
 class RegisterWebhookDto {
   @IsUrl({}, { message: 'url must be a valid HTTPS URL' })
@@ -33,12 +26,9 @@ export class WebhooksController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary:     'Register a webhook URL',
-    description: 'Register an HTTPS endpoint to receive payout lifecycle events. Store the returned secret — it is used to verify webhook signatures.',
-  })
+  @ApiOperation({ summary: 'Register a webhook URL' })
   async register(
-    @CurrentPartner() partner: Partner,
+    @CurrentPartner() partner: AuthenticatedPartner,
     @Body()           dto:     RegisterWebhookDto,
   ) {
     return this.webhooksService.register(partner.id, dto.url, dto.events);
@@ -46,7 +36,7 @@ export class WebhooksController {
 
   @Get()
   @ApiOperation({ summary: 'List all registered webhooks' })
-  async list(@CurrentPartner() partner: Partner) {
+  async list(@CurrentPartner() partner: AuthenticatedPartner) {
     return this.webhooksService.list(partner.id);
   }
 }

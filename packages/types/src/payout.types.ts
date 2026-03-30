@@ -1,3 +1,4 @@
+// packages/types/src/payout.types.ts
 import type { Currency, PayoutStatus } from '@elorge/constants';
 
 // ── Recipient ──────────────────────────────────────────────
