@@ -39,11 +39,10 @@ services:
       NODE_ENV: development
       DATABASE_URL: postgresql://elorge:elorge_password@postgres:5432/elorge_db
       REDIS_URL: redis://redis:6379
-    env_file:
-      - ../../apps/api/.env
     volumes:
       - ../../apps/api/src:/app/apps/api/src
       - ../../packages:/app/packages
+      - api_dist:/app/apps/api/dist
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,11 +62,8 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:3001
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: dev_secret_replace_in_production
-    env_file:
-      - ../../apps/dashboard/.env
     volumes:
       - ../../apps/dashboard/src:/app/apps/dashboard/src
-      - ../../apps/dashboard/app:/app/apps/dashboard/app
       - ../../packages:/app/packages
     depends_on:
       - api
@@ -75,3 +71,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  api_dist:
