@@ -1,7 +1,4 @@
-// Payout lifecycle statuses
-// Every payout moves through these states exactly once
-// (except FAILED which can be retried back to PROCESSING)
-
+// packages/constants/src/payout-status.ts
 export enum PayoutStatus {
   PENDING    = 'PENDING',     // received, compliance check in progress
   PROCESSING = 'PROCESSING',  // compliance passed, sent to PSP

@@ -1,21 +1,19 @@
 // apps/api/src/modules/payouts/payouts.controller.ts
 import {
   Body, Controller, Get, HttpCode, HttpStatus,
-  Param, Post, Query, UseGuards,
+  Param, Post, Query,
 } from '@nestjs/common';
 import {
   ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags,
 } from '@nestjs/swagger';
 
 import type { AuthenticatedPartner } from '@elorge/types';
-import { ApiKeyGuard }    from '../../common/guards/api-key.guard';
 import { CurrentPartner } from '../../common/decorators/current-partner.decorator';
 import { CreatePayoutDto, PayoutQueryDto } from './payouts.dto';
 import { PayoutsService } from './payouts.service';
 
 @ApiTags('Payouts')
 @ApiBearerAuth()
-@UseGuards(ApiKeyGuard)
 @Controller('v1/payouts')
 export class PayoutsController {
   constructor(private readonly payoutsService: PayoutsService) {}

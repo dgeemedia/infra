@@ -1,6 +1,4 @@
-// Supported sending currencies (what partners send FROM)
-// NGN is always the receiving currency
-
+// packages/constants/src/currencies.ts
 export enum Currency {
   GBP = 'GBP', // British Pound Sterling — primary (FinestPay UK)
   USD = 'USD', // US Dollar

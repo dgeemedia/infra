@@ -1,6 +1,4 @@
-// All CBN-registered Nigerian bank codes (NIBSS NIP codes)
-// Used for validating recipient bank details on every payout
-
+// packages/constants/src/bank-codes.ts
 export const NIGERIAN_BANKS: Record<string, string> = {
   // ── Commercial Banks ──────────────────────────────────
   '044': 'Access Bank',

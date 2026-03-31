@@ -1,5 +1,5 @@
-// packages/constants/src/index.ts
 export * from './bank-codes';
 export * from './currencies';
 export * from './error-codes';
 export * from './payout-status';
+//# sourceMappingURL=index.d.ts.map

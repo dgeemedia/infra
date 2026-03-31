@@ -1,10 +1,9 @@
 // apps/api/src/modules/webhooks/webhooks.controller.ts
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsEnum, IsUrl } from 'class-validator';
 
 import type { AuthenticatedPartner, WebhookEventType } from '@elorge/types';
-import { ApiKeyGuard }    from '../../common/guards/api-key.guard';
 import { CurrentPartner } from '../../common/decorators/current-partner.decorator';
 import { WebhooksService } from './webhooks.service';
 
@@ -19,7 +18,6 @@ class RegisterWebhookDto {
 
 @ApiTags('Webhooks')
 @ApiBearerAuth()
-@UseGuards(ApiKeyGuard)
 @Controller('v1/webhooks')
 export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}

@@ -1,5 +1,6 @@
 // apps/api/src/app.module.ts
 import { Module }        from '@nestjs/common';
+import { APP_GUARD }     from '@nestjs/core';
 import { ConfigModule, ConfigService }  from '@nestjs/config';
 import { BullModule }    from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -23,6 +24,7 @@ import { ComplianceModule } from './modules/compliance/compliance.module';
 import { WebhooksModule }   from './modules/webhooks/webhooks.module';
 import { PspModule }        from './modules/psp/psp.module';
 import { HealthController } from './health.controller';
+import { ApiKeyGuard }      from './common/guards/api-key.guard';
 
 @Module({
   imports: [
@@ -48,6 +50,7 @@ import { HealthController } from './health.controller';
           removeOnComplete: true,
           removeOnFail:     false,
         },
+        tls: config.get<string>('redis.url')?.startsWith('rediss') ? {} : undefined,
       }),
     }),
 
@@ -68,5 +71,12 @@ import { HealthController } from './health.controller';
     PspModule,
   ],
   controllers: [HealthController],
+  providers: [
+    // ── Global API Key Guard ─────────────────────────────────
+    {
+      provide:  APP_GUARD,
+      useClass: ApiKeyGuard,
+    },
+  ],
 })
 export class AppModule {}
