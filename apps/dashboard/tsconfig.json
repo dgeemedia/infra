@@ -1,21 +1,45 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target":     "ES2022",
-    "lib":        ["dom", "dom.iterable", "esnext"],
-    "module":     "esnext",
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "module": "esnext",
     "moduleResolution": "bundler",
-    "jsx":        "preserve",
+    "jsx": "preserve",
     "incremental": true,
-    "plugins":    [{ "name": "next" }],
-    "baseUrl":    ".",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
     "paths": {
-      "@/*":               ["./src/*"],
-      "@elorge/types":     ["../../packages/types/src"],
-      "@elorge/constants": ["../../packages/constants/src"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@elorge/types": [
+        "../../packages/types/src"
+      ],
+      "@elorge/constants": [
+        "../../packages/constants/src"
+      ]
     },
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
+    "allowJs": true,
+    "noEmit": true,
+    "isolatedModules": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

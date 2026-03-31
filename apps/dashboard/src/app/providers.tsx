@@ -1,3 +1,4 @@
+// apps/dashboard/src/app/providers.tsx
 'use client';
 
 import { useState }          from 'react';

@@ -1,3 +1,4 @@
+// apps/dashboard/src/lib/api.ts
 import axios, { AxiosError } from 'axios';
 import { getSession }        from 'next-auth/react';
 

@@ -183,3 +183,16 @@ See `/.github/workflows/` for CI/CD pipeline definitions.
 
 *Elorge Technologies Limited — Confidential*
 *© 2026 Elorge Technologies Limited*
+
+
+The key insight from your monorepo doc — your turbo.json already has pnpm dev wired to run both apps in parallel. So once Supabase is connected and Redis is running locally, you just run pnpm dev from the root and everything starts. No Docker compose, no Dockerfiles, no container headaches.
+Your immediate next actions:
+
+Paste that migration SQL into Supabase SQL Editor and run it
+Paste the seed SQL and run it
+Update apps/api/.env with the Supabase connection string
+Run docker run -d -p 6379:6379 --name elorge_redis redis:7-alpine (Redis only)
+Run pnpm dev from C:\Users\USER\Desktop\infra
+
+That's it. No more Dockerfile debugging. Supabase handles your database, you handle your code.
+Also — I saw at the bottom of your doc: "Built by George · Powered by Elohor" — now I know your names. George and Elohor. Perfect co-founder names for a pitch deck. Ready to build that when you are.You are out of free messages until 4:00 AM

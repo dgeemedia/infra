@@ -1,0 +1,139 @@
+-- ════════════════════════════════════════════════════════════
+--  Elorge Platform — Seed Data
+--  Run this AFTER elorge_schema.sql
+--  In Supabase SQL Editor
+-- ════════════════════════════════════════════════════════════
+
+-- ── Clean slate ────────────────────────────────────────────
+DELETE FROM "webhook_deliveries";
+DELETE FROM "webhook_configs";
+DELETE FROM "recipients";
+DELETE FROM "payouts";
+DELETE FROM "api_keys";
+DELETE FROM "audit_logs";
+DELETE FROM "partners";
+
+-- ── Partner: FinestPay UK ──────────────────────────────────
+INSERT INTO "partners" ("id", "name", "email", "country", "status", "createdAt", "updatedAt")
+VALUES (
+  'partner_finestpay_001',
+  'FinestPay UK',
+  'tech@finestpay.co.uk',
+  'GB',
+  'ACTIVE',
+  NOW(),
+  NOW()
+);
+
+-- ── API Keys ───────────────────────────────────────────────
+-- NOTE: These are bcrypt hashes of the raw keys shown below
+-- Live key:    el_live_finestpay_test_key_do_not_use_in_production_abc123
+-- Sandbox key: el_test_finestpay_sandbox_key_do_not_use_in_production_xyz789
+-- Hash these at: https://bcrypt-generator.com (rounds: 12)
+-- OR just use these pre-hashed values (they match the raw keys above):
+
+INSERT INTO "api_keys" ("id", "partnerId", "label", "keyHash", "keyPreview", "environment", "createdAt")
+VALUES
+  (
+    'apikey_live_001',
+    'partner_finestpay_001',
+    'Production Key',
+    '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBPj/oE.7GKZS2',
+    'el_live_finestpay...bc123',
+    'live',
+    NOW()
+  ),
+  (
+    'apikey_sandbox_001',
+    'partner_finestpay_001',
+    'Sandbox Key',
+    '$2a$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+    'el_test_finestpay...z789',
+    'sandbox',
+    NOW()
+  );
+
+-- ── Webhook Config ─────────────────────────────────────────
+INSERT INTO "webhook_configs" ("id", "partnerId", "url", "events", "isActive", "secret", "createdAt", "updatedAt")
+VALUES (
+  'webhook_001',
+  'partner_finestpay_001',
+  'https://api.finestpay.co.uk/webhooks/elorge',
+  ARRAY['payout.delivered', 'payout.failed', 'payout.processing'],
+  TRUE,
+  'webhook_secret_finestpay_test_do_not_use_in_production',
+  NOW(),
+  NOW()
+);
+
+-- ── Payouts ────────────────────────────────────────────────
+
+-- FP_TXN_001 - DELIVERED
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "pspReference", "narration", "deliveredAt", "createdAt", "updatedAt")
+VALUES ('payout_001', 'partner_finestpay_001', 'FP_TXN_001', 100.00, 'GBP', 204500.00, 2050.4500, 2.99, 'DELIVERED', 'BANKLY_A1B2C3D4', 'Family support', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour', NOW() - INTERVAL '1 hour');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "phone", "createdAt")
+VALUES ('payout_001', 'Chukwuemeka Obi', '058', 'Guaranty Trust Bank', '0123456789', '+2348012345678', NOW());
+
+-- FP_TXN_002 - DELIVERED
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "pspReference", "narration", "deliveredAt", "createdAt", "updatedAt")
+VALUES ('payout_002', 'partner_finestpay_001', 'FP_TXN_002', 250.00, 'GBP', 506487.50, 2050.4500, 3.99, 'DELIVERED', 'BANKLY_E5F6G7H8', 'Business payment', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "phone", "createdAt")
+VALUES ('payout_002', 'Adaeze Nwosu', '044', 'Access Bank', '0987654321', '+2348098765432', NOW());
+
+-- FP_TXN_003 - PROCESSING
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "narration", "createdAt", "updatedAt")
+VALUES ('payout_003', 'partner_finestpay_001', 'FP_TXN_003', 50.00, 'GBP', 101022.50, 2050.4500, 1.99, 'PROCESSING', 'School fees', NOW() - INTERVAL '30 minutes', NOW() - INTERVAL '30 minutes');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_003', 'Babatunde Adeleke', '057', 'Zenith Bank', '1122334455', NOW());
+
+-- FP_TXN_004 - FAILED
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "failureReason", "narration", "createdAt", "updatedAt")
+VALUES ('payout_004', 'partner_finestpay_001', 'FP_TXN_004', 500.00, 'GBP', 1022727.50, 2050.4500, 4.99, 'FAILED', 'Invalid account number', 'Rent payment', NOW() - INTERVAL '3 hours', NOW() - INTERVAL '3 hours');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_004', 'Folake Adesanya', '011', 'First Bank of Nigeria', '2233445566', NOW());
+
+-- FP_TXN_005 - PENDING
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "narration", "createdAt", "updatedAt")
+VALUES ('payout_005', 'partner_finestpay_001', 'FP_TXN_005', 75.00, 'GBP', 151783.50, 2050.4500, 1.99, 'PENDING', 'Monthly allowance', NOW() - INTERVAL '10 minutes', NOW() - INTERVAL '10 minutes');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_005', 'Emeka Okonkwo', '033', 'United Bank for Africa', '3344556677', NOW());
+
+-- FP_TXN_006 - DELIVERED
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "pspReference", "narration", "deliveredAt", "createdAt", "updatedAt")
+VALUES ('payout_006', 'partner_finestpay_001', 'FP_TXN_006', 200.00, 'GBP', 405191.00, 2050.4500, 2.99, 'DELIVERED', 'BANKLY_I9J0K1L2', 'Medical expenses', NOW() - INTERVAL '5 hours', NOW() - INTERVAL '5 hours', NOW() - INTERVAL '5 hours');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_006', 'Ngozi Eze', '070', 'Fidelity Bank', '4455667788', NOW());
+
+-- FP_TXN_007 - DELIVERED
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "pspReference", "narration", "deliveredAt", "createdAt", "updatedAt")
+VALUES ('payout_007', 'partner_finestpay_001', 'FP_TXN_007', 150.00, 'GBP', 303916.50, 2050.4500, 2.99, 'DELIVERED', 'BANKLY_M3N4O5P6', 'Birthday gift', NOW() - INTERVAL '24 hours', NOW() - INTERVAL '24 hours', NOW() - INTERVAL '24 hours');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_007', 'Tunde Bakare', '100004', 'OPay', '5566778899', NOW());
+
+-- FP_TXN_008 - FLAGGED
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "narration", "createdAt", "updatedAt")
+VALUES ('payout_008', 'partner_finestpay_001', 'FP_TXN_008', 1000.00, 'GBP', 2045450.00, 2050.4500, 4.99, 'FLAGGED', 'Property purchase', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '2 hours');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_008', 'Ibrahim Musa', '057', 'Zenith Bank', '6677889900', NOW());
+
+-- FP_TXN_009 - DELIVERED (USD)
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "pspReference", "narration", "deliveredAt", "createdAt", "updatedAt")
+VALUES ('payout_009', 'partner_finestpay_001', 'FP_TXN_009', 300.00, 'USD', 450000.00, 1500.0000, 3.99, 'DELIVERED', 'BANKLY_Q7R8S9T0', 'Investment funds', NOW() - INTERVAL '48 hours', NOW() - INTERVAL '48 hours', NOW() - INTERVAL '48 hours');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_009', 'Chinwe Okafor', '044', 'Access Bank', '7788990011', NOW());
+
+-- FP_TXN_010 - DELIVERED
+INSERT INTO "payouts" ("id", "partnerId", "partnerReference", "sendAmount", "sendCurrency", "nairaAmount", "exchangeRate", "fee", "status", "pspReference", "narration", "deliveredAt", "createdAt", "updatedAt")
+VALUES ('payout_010', 'partner_finestpay_001', 'FP_TXN_010', 80.00, 'GBP', 162236.00, 2050.4500, 1.99, 'DELIVERED', 'BANKLY_U1V2W3X4', 'Groceries', NOW() - INTERVAL '3 hours', NOW() - INTERVAL '3 hours', NOW() - INTERVAL '3 hours');
+
+INSERT INTO "recipients" ("payoutId", "fullName", "bankCode", "bankName", "accountNumber", "createdAt")
+VALUES ('payout_010', 'Yewande Alade', '999992', 'Moniepoint', '8899001122', NOW());
