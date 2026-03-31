@@ -1,3 +1,4 @@
+// apps/dashboard/src/hooks/usePayoutStats.ts
 'use client';
 
 import { useQuery } from '@tanstack/react-query';

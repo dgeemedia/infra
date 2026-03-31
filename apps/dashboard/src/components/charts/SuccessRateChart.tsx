@@ -1,3 +1,4 @@
+// apps/dashboard/src/components/charts/SuccessRateChart.tsx
 'use client';
 
 import {
