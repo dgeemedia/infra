@@ -1,7 +1,7 @@
 // apps/api/src/modules/auth/auth.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from '../../database/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,9 +11,9 @@ import type { AuthenticatedPartner } from '@elorge/types';
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
-  private readonly prisma = new PrismaClient();
-
+  
   constructor(
+    private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}

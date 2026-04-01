@@ -1,21 +1,21 @@
 // apps/api/src/modules/webhooks/webhooks.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService }      from '@nestjs/config';
-import { PrismaClient }       from '@prisma/client';
 import axios                  from 'axios';
 import * as crypto            from 'crypto';
 import { v4 as uuidv4 }       from 'uuid';
-
+import { PrismaService }      from '../../database/prisma.service';
 import type { WebhookEventType } from '@elorge/types';
-
-const prisma = new PrismaClient();
 
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
-  constructor(private readonly config: ConfigService) {}
-
+  constructor(
+    private readonly prisma:  PrismaService,   // ← injected
+    private readonly config:  ConfigService,
+  ) {}
+  
   // ── Fire a payout lifecycle event to all partner webhooks ─
   async firePayoutEvent(
     payoutId: string,

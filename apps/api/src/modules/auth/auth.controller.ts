@@ -1,3 +1,4 @@
+// apps/api/src/modules/auth/auth.controller.ts
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsEmail, IsString, MinLength } from 'class-validator';

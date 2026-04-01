@@ -6,18 +6,19 @@ import {
   PrismaHealthIndicator,
   MemoryHealthIndicator,
 } from '@nestjs/terminus';
-import { PrismaClient } from '@prisma/client';
+import { PrismaService } from './database/prisma.service';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from './common/decorators/public.decorator';
 
 @ApiTags('Health')
 @Controller('health')
 export class HealthController {
-  private readonly prisma = new PrismaClient();
 
   constructor(
     private readonly health:   HealthCheckService,
     private readonly memory:   MemoryHealthIndicator,
+    private readonly prisma:   PrismaService,
+
   ) {}
 
   @Get()

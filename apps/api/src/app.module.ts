@@ -6,6 +6,7 @@ import { BullModule }    from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TerminusModule } from '@nestjs/terminus';
 import { HttpModule }    from '@nestjs/axios';
+import { PrismaModule } from './database/prisma.module';
 
 import {
   appConfig,
@@ -29,6 +30,7 @@ import { ApiKeyGuard }      from './common/guards/api-key.guard';
 @Module({
   imports: [
     // ── Config — loads all environment variables ────────────
+    PrismaModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [
