@@ -16,6 +16,12 @@ datasource db {
 
 // ── Enums ─────────────────────────────────────────────────────
 
+// ★ NEW
+enum PartnerRole {
+  ADMIN
+  PARTNER
+}
+
 enum PartnerStatus {
   ACTIVE
   SUSPENDED
@@ -56,42 +62,38 @@ enum AuditAction {
 }
 
 // ── Partner ───────────────────────────────────────────────────
-// Represents a remittance company using the Elorge API
-// e.g. FinestPay UK
-
 model Partner {
-  id        String        @id @default(uuid())
-  name      String                              // e.g. "FinestPay UK"
-  email     String        @unique
-  country   String                              // ISO 3166-1 e.g. "GB"
-  status    PartnerStatus @default(PENDING_REVIEW)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id           String        @id @default(uuid())
+  name         String
+  email        String        @unique
+  passwordHash String?                             // ★ NEW — dashboard login
+  role         PartnerRole   @default(PARTNER)     // ★ NEW — ADMIN | PARTNER
+  country      String
+  status       PartnerStatus @default(PENDING_REVIEW)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 
   // Relations
-  apiKeys          ApiKey[]
-  payouts          Payout[]
-  webhookConfigs   WebhookConfig[]
-  auditLogs        AuditLog[]
+  apiKeys        ApiKey[]
+  payouts        Payout[]
+  webhookConfigs WebhookConfig[]
+  auditLogs      AuditLog[]
 
   @@map("partners")
 }
 
 // ── ApiKey ────────────────────────────────────────────────────
-// Partners authenticate using API keys
-
 model ApiKey {
   id          String            @id @default(uuid())
   partnerId   String
-  label       String                              // "Production Key", "Test Key"
-  keyHash     String            @unique           // bcrypt hash of the full key
-  keyPreview  String                              // "el_live_xxxx...abc" (safe to display)
+  label       String
+  keyHash     String            @unique
+  keyPreview  String
   environment ApiKeyEnvironment @default(live)
   lastUsedAt  DateTime?
   revokedAt   DateTime?
   createdAt   DateTime          @default(now())
 
-  // Relations
   partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
 
   @@index([partnerId])
@@ -100,32 +102,29 @@ model ApiKey {
 }
 
 // ── Payout ────────────────────────────────────────────────────
-// Every payout request — the core entity
-
 model Payout {
   id               String       @id @default(uuid())
   partnerId        String
-  partnerReference String                         // partner's own transaction ID
+  partnerReference String
   sendAmount       Decimal      @db.Decimal(12, 2)
-  sendCurrency     String                         // GBP | USD | EUR | CAD
+  sendCurrency     String
   nairaAmount      Decimal      @db.Decimal(14, 2)
   exchangeRate     Decimal      @db.Decimal(10, 4)
   fee              Decimal      @db.Decimal(10, 2)
   status           PayoutStatus @default(PENDING)
-  pspReference     String?                        // PSP's own transaction reference
+  pspReference     String?
   failureReason    String?
-  bankSessionId    String?                        // NIBSS NIP session ID
+  bankSessionId    String?
   narration        String?
   deliveredAt      DateTime?
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  // Relations
-  partner          Partner           @relation(fields: [partnerId], references: [id])
-  recipient        Recipient?
+  partner           Partner           @relation(fields: [partnerId], references: [id])
+  recipient         Recipient?
   webhookDeliveries WebhookDelivery[]
 
-  @@unique([partnerId, partnerReference])         // prevent duplicate references per partner
+  @@unique([partnerId, partnerReference])
   @@index([partnerId])
   @@index([status])
   @@index([createdAt])
@@ -133,19 +132,16 @@ model Payout {
 }
 
 // ── Recipient ─────────────────────────────────────────────────
-// Nigerian bank account receiving the Naira payout
-
 model Recipient {
-  id            String  @id @default(uuid())
-  payoutId      String  @unique
+  id            String   @id @default(uuid())
+  payoutId      String   @unique
   fullName      String
-  bankCode      String                            // CBN bank code e.g. "058"
-  bankName      String                            // resolved bank name
-  accountNumber String                            // 10-digit NUBAN
+  bankCode      String
+  bankName      String
+  accountNumber String
   phone         String?
   createdAt     DateTime @default(now())
 
-  // Relations
   payout Payout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
 
   @@index([accountNumber])
@@ -153,20 +149,17 @@ model Recipient {
 }
 
 // ── WebhookConfig ─────────────────────────────────────────────
-// Partner's registered webhook endpoint
-
 model WebhookConfig {
   id        String   @id @default(uuid())
   partnerId String
   url       String
-  events    String[]                              // array of event types
+  events    String[]
   isActive  Boolean  @default(true)
-  secret    String                               // HMAC signing secret
+  secret    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  partner          Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  partner           Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   webhookDeliveries WebhookDelivery[]
 
   @@index([partnerId])
@@ -174,23 +167,20 @@ model WebhookConfig {
 }
 
 // ── WebhookDelivery ───────────────────────────────────────────
-// Log of every webhook fire attempt — for debugging and retry
-
 model WebhookDelivery {
-  id            String                @id @default(uuid())
-  payoutId      String
-  webhookId     String
-  event         String                            // "payout.delivered" etc.
-  payload       Json                              // full payload sent
-  responseCode  Int?
-  responseBody  String?
-  attempt       Int                   @default(1)
-  status        WebhookDeliveryStatus @default(PENDING)
-  nextRetryAt   DateTime?
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+  id           String                @id @default(uuid())
+  payoutId     String
+  webhookId    String
+  event        String
+  payload      Json
+  responseCode Int?
+  responseBody String?
+  attempt      Int                   @default(1)
+  status       WebhookDeliveryStatus @default(PENDING)
+  nextRetryAt  DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
 
-  // Relations
   payout  Payout        @relation(fields: [payoutId],  references: [id])
   webhook WebhookConfig @relation(fields: [webhookId], references: [id])
 
@@ -201,20 +191,17 @@ model WebhookDelivery {
 }
 
 // ── AuditLog ──────────────────────────────────────────────────
-// Immutable record of every significant system event
-
 model AuditLog {
   id         String      @id @default(uuid())
   partnerId  String?
-  entityType String                              // "Payout" | "Partner" | "ApiKey"
+  entityType String
   entityId   String
   action     AuditAction
-  metadata   Json?                               // additional context
+  metadata   Json?
   ipAddress  String?
   userAgent  String?
   createdAt  DateTime    @default(now())
 
-  // Relations
   partner Partner? @relation(fields: [partnerId], references: [id])
 
   @@index([partnerId])
