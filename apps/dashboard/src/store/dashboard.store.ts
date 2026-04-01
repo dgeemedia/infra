@@ -1,3 +1,4 @@
+// apps/dashboard/src/store/dashboard.store.ts
 import { create } from 'zustand';
 
 interface DateRange {
