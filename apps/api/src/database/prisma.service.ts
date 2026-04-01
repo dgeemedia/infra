@@ -9,18 +9,19 @@ export class PrismaService extends PrismaClient implements OnModuleDestroy {
   constructor() {
     super({
       datasources: {
-        db: {
-          url: process.env['DATABASE_URL'],
-        },
+        db: { url: process.env['DATABASE_URL'] },
       },
       log: ['warn', 'error'],
     });
   }
 
-  // ❌ Remove onModuleInit / $connect() — PgBouncer handles pooling externally.
-  // Calling $connect() on startup holds connections open unnecessarily.
-
   async onModuleDestroy() {
     await this.$disconnect();
+    this.logger.log('Disconnected from Supabase PostgreSQL');
+  }
+
+  async testConnection() {
+    await this.$queryRaw`SELECT 1`;
+    this.logger.log('✅ Connected to Supabase PostgreSQL');
   }
 }

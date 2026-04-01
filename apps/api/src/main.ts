@@ -8,6 +8,7 @@ import { AppModule }                  from './app.module';
 import { GlobalExceptionFilter }      from './common/filters/global-exception.filter';
 import { LoggingInterceptor }         from './common/interceptors/logging.interceptor';
 import { TransformInterceptor }       from './common/interceptors/transform.interceptor';
+import { PrismaService }              from './database/prisma.service';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -92,6 +93,10 @@ async function bootstrap() {
   // ── Start Server ─────────────────────────────────────────
   const port = config.get<number>('app.port') ?? 3001;
   await app.listen(port, '0.0.0.0');
+
+  // ── Database connection check ─────────────────────────────
+  const prisma = app.get(PrismaService);
+  await prisma.testConnection();
 
   logger.log(`🚀 Elorge API running on port ${port}`);
   logger.log(`📖 Swagger: http://localhost:${port}/api/docs`);
