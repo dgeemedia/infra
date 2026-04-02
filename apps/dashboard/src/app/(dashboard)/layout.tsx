@@ -1,25 +1,24 @@
 // apps/dashboard/src/app/(dashboard)/layout.tsx
-import { redirect }    from 'next/navigation';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
-import { Sidebar }     from '@/components/layout/Sidebar';
-import { Navbar }      from '@/components/layout/Navbar';
+import { redirect }         from 'next/navigation';
+import { getServerSession } from 'next-auth/next';   // ← next-auth/next explicitly
+import { authOptions }      from '@/lib/auth';
+import { Sidebar }          from '@/components/layout/Sidebar';
+import { Navbar }           from '@/components/layout/Navbar';
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // Server-side auth guard — redirect if no session
   const session = await getServerSession(authOptions);
+
+  console.log('[LAYOUT] session:', JSON.stringify(session));  // ← temporary
+
   if (!session) redirect('/login');
 
   return (
     <div className="flex min-h-screen bg-background">
-      {/* Sidebar — fixed left */}
       <Sidebar />
-
-      {/* Main content — offset by sidebar width */}
       <div className="flex flex-1 flex-col transition-all duration-300 pl-60">
         <Navbar />
         <main className="flex-1 p-6">

@@ -1,11 +1,12 @@
 // apps/api/src/app.module.ts
-import { Module }        from '@nestjs/common';
-import { APP_GUARD }     from '@nestjs/core';
-import { ConfigModule, ConfigService }  from '@nestjs/config';
-import { BullModule }    from '@nestjs/bull';
+import { Module }         from '@nestjs/common';
+import { APP_GUARD }      from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { BullModule }     from '@nestjs/bull';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TerminusModule } from '@nestjs/terminus';
-import { HttpModule }    from '@nestjs/axios';
+import { HttpModule }     from '@nestjs/axios';
+
 import { PrismaModule } from './database/prisma.module';
 
 import {
@@ -24,13 +25,13 @@ import { FxModule }         from './modules/fx/fx.module';
 import { ComplianceModule } from './modules/compliance/compliance.module';
 import { WebhooksModule }   from './modules/webhooks/webhooks.module';
 import { PspModule }        from './modules/psp/psp.module';
+import { AdminModule }      from './modules/admin/admin.module';
 import { HealthController } from './health.controller';
 import { ApiKeyGuard }      from './common/guards/api-key.guard';
 
 @Module({
   imports: [
     // ── Config — loads all environment variables ────────────
-    PrismaModule,
     ConfigModule.forRoot({
       isGlobal: true,
       load: [
@@ -42,6 +43,9 @@ import { ApiKeyGuard }      from './common/guards/api-key.guard';
         complianceConfig,
       ],
     }),
+
+    // ── Prisma — shared DB service ───────────────────────────
+    PrismaModule,
 
     // ── Bull / Redis — async job queues ─────────────────────
     BullModule.forRootAsync({
@@ -56,14 +60,14 @@ import { ApiKeyGuard }      from './common/guards/api-key.guard';
       }),
     }),
 
-    // ── Cron Jobs ───────────────────────────────────────────
+    // ── Cron Jobs ────────────────────────────────────────────
     ScheduleModule.forRoot(),
 
-    // ── Health Checks ───────────────────────────────────────
+    // ── Health Checks ────────────────────────────────────────
     TerminusModule,
     HttpModule,
 
-    // ── Feature Modules ─────────────────────────────────────
+    // ── Feature Modules ──────────────────────────────────────
     AuthModule,
     PartnersModule,
     PayoutsModule,
@@ -71,10 +75,12 @@ import { ApiKeyGuard }      from './common/guards/api-key.guard';
     ComplianceModule,
     WebhooksModule,
     PspModule,
+    AdminModule,
   ],
   controllers: [HealthController],
   providers: [
-    // ── Global API Key Guard ─────────────────────────────────
+    // ── Global API Key Guard (for partner endpoints) ─────────
+    // Admin routes bypass this via @Public() on AdminController
     {
       provide:  APP_GUARD,
       useClass: ApiKeyGuard,

@@ -1,27 +1,70 @@
-// apps/dashboard/src/components/layout/Sidebar.tsx
 'use client';
 
-import Link                         from 'next/link';
-import { usePathname }              from 'next/navigation';
+// apps/dashboard/src/components/layout/Sidebar.tsx
+import Link            from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useSession }  from 'next-auth/react';
 import {
   LayoutDashboard, ArrowRightLeft, Key,
-  Webhook, Settings, ChevronLeft, Zap,
+  Webhook, Settings, ChevronLeft,
+  Users, AlertTriangle, ShieldCheck,
 } from 'lucide-react';
 
-import { useDashboardStore }        from '@/store/dashboard.store';
-import { cn }                       from '@/lib/utils';
+import { useDashboardStore } from '@/store/dashboard.store';
+import { cn }                from '@/lib/utils';
 
-const NAV_ITEMS = [
-  { href: '/',              label: 'Overview',     icon: LayoutDashboard },
-  { href: '/transactions',  label: 'Transactions', icon: ArrowRightLeft   },
-  { href: '/api-keys',      label: 'API Keys',     icon: Key              },
-  { href: '/webhooks',      label: 'Webhooks',     icon: Webhook          },
-  { href: '/settings',      label: 'Settings',     icon: Settings         },
+const PARTNER_NAV = [
+  { href: '/',             label: 'Overview',     icon: LayoutDashboard },
+  { href: '/transactions', label: 'Transactions', icon: ArrowRightLeft  },
+  { href: '/api-keys',     label: 'API Keys',     icon: Key             },
+  { href: '/webhooks',     label: 'Webhooks',     icon: Webhook         },
+  { href: '/settings',     label: 'Settings',     icon: Settings        },
+];
+
+const ADMIN_NAV = [
+  { href: '/admin',              label: 'Platform Overview', icon: ShieldCheck    },
+  { href: '/admin/partners',     label: 'All Partners',      icon: Users          },
+  { href: '/admin/transactions', label: 'All Transactions',  icon: ArrowRightLeft },
+  { href: '/admin/flagged',      label: 'Flagged Queue',     icon: AlertTriangle  },
 ];
 
 export function Sidebar() {
-  const pathname              = usePathname();
+  const pathname                       = usePathname();
+  const { data: session }              = useSession();
   const { sidebarOpen, toggleSidebar } = useDashboardStore();
+
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
+
+  function isActive(href: string) {
+    return href === '/' ? pathname === '/' : pathname.startsWith(href);
+  }
+
+  function NavItem({
+    href,
+    label,
+    icon: Icon,
+  }: {
+    href:  string;
+    label: string;
+    icon:  React.ElementType;
+  }) {
+    const active = isActive(href);
+    return (
+      <Link
+        href={href}
+        className={cn(
+          'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
+          active
+            ? 'bg-primary text-primary-foreground font-medium'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+        )}
+        title={!sidebarOpen ? label : undefined}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        {sidebarOpen && <span className="truncate">{label}</span>}
+      </Link>
+    );
+  }
 
   return (
     <aside
@@ -30,7 +73,7 @@ export function Sidebar() {
         sidebarOpen ? 'w-60' : 'w-16',
       )}
     >
-      {/* ── Logo ────────────────────────────────────────── */}
+      {/* ── Logo ──────────────────────────────────────────── */}
       <div className="flex h-16 items-center border-b border-border px-4">
         <div className="flex items-center gap-2.5 overflow-hidden">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
@@ -39,7 +82,9 @@ export function Sidebar() {
           {sidebarOpen && (
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-foreground">Elorge</p>
-              <p className="truncate text-[10px] text-muted-foreground">Payout Platform</p>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {isAdmin ? 'Admin Console' : 'Payout Platform'}
+              </p>
             </div>
           )}
         </div>
@@ -53,38 +98,43 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* ── Nav ─────────────────────────────────────────── */}
-      <nav className="flex flex-col gap-1 p-2 pt-4">
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const isActive = href === '/' ? pathname === '/' : pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
-                isActive
-                  ? 'bg-primary text-primary-foreground font-medium'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+      {/* ── Nav ───────────────────────────────────────────── */}
+      <nav className="flex flex-col gap-1 p-2 pt-4 overflow-y-auto h-[calc(100vh-4rem-4rem)]">
+        {/* Partner nav — always shown */}
+        {PARTNER_NAV.map((item) => (
+          <NavItem key={item.href} {...item} />
+        ))}
+
+        {/* Admin nav — only for role === 'ADMIN' */}
+        {isAdmin && (
+          <>
+            <div className={cn('my-2', sidebarOpen ? 'border-t border-border pt-2' : 'flex justify-center')}>
+              {sidebarOpen && (
+                <p className="px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                  Admin
+                </p>
               )}
-              title={!sidebarOpen ? label : undefined}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {sidebarOpen && <span className="truncate">{label}</span>}
-            </Link>
-          );
-        })}
+            </div>
+            {ADMIN_NAV.map((item) => (
+              <NavItem key={item.href} {...item} />
+            ))}
+          </>
+        )}
       </nav>
 
-      {/* ── Status dot ──────────────────────────────────── */}
-      <div className={cn(
-        'absolute bottom-4 left-0 right-0 px-3',
-        !sidebarOpen && 'flex justify-center',
-      )}>
-        <div className={cn(
-          'flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2',
-          !sidebarOpen && 'justify-center px-0 py-2 bg-transparent border-transparent',
-        )}>
+      {/* ── Status dot ────────────────────────────────────── */}
+      <div
+        className={cn(
+          'absolute bottom-4 left-0 right-0 px-3',
+          !sidebarOpen && 'flex justify-center',
+        )}
+      >
+        <div
+          className={cn(
+            'flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2',
+            !sidebarOpen && 'justify-center px-0 py-2 bg-transparent border-transparent',
+          )}
+        >
           <div className="h-2 w-2 shrink-0 rounded-full bg-green-500 animate-pulse" />
           {sidebarOpen && (
             <span className="text-xs text-green-700 font-medium">All systems operational</span>
