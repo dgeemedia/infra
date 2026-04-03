@@ -8,18 +8,21 @@ import type { PartnerStats } from '@elorge/types';
 export function usePayoutStats(partnerId: string) {
   return useQuery({
     queryKey: ['stats', partnerId],
+    // Don't fire until we have a real partnerId — prevents a 400/404
+    // on first render before the session is hydrated client-side.
+    enabled:  !!partnerId,
     queryFn:  async () => {
       const { data } = await api.get<{ success: boolean; data: PartnerStats }>(
         `/v1/partners/${partnerId}/stats`,
       );
       return data.data;
     },
-    staleTime: 60_000, // 1 minute
+    staleTime:       60_000,
     refetchInterval: 60_000,
   });
 }
 
-// ── Volume chart data (last 30 days) ──────────────────────
+// ── Volume chart data (last N days) ───────────────────────
 export function useVolumeData(days = 30) {
   return useQuery({
     queryKey: ['volume', days],
@@ -36,9 +39,8 @@ export function useVolumeData(days = 30) {
         `/v1/payouts?pageSize=500&startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`,
       );
 
-      // Group by day
+      // Seed all days with zeroes so the chart renders even on empty data
       const byDay: Record<string, { volume: number; count: number; success: number }> = {};
-
       for (let i = 0; i < days; i++) {
         const d = new Date();
         d.setDate(d.getDate() - i);

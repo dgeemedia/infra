@@ -5,7 +5,7 @@ import { ConfigService }      from '@nestjs/config';
 import * as bcrypt            from 'bcryptjs';
 import { v4 as uuidv4 }       from 'uuid';
 
-import { PrismaService }            from '../../database/prisma.service';
+import { PrismaService }             from '../../database/prisma.service';
 import type { AuthenticatedPartner } from '@elorge/types';
 
 @Injectable()
@@ -13,12 +13,12 @@ export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    private readonly prisma:       PrismaService,   // ← injected, not new PrismaClient()
-    private readonly jwtService:   JwtService,
+    private readonly prisma:        PrismaService,
+    private readonly jwtService:    JwtService,
     private readonly configService: ConfigService,
   ) {}
 
-  // ── Validate API key (for partner API calls) ──────────────
+  // ── Validate raw API key (external partner API calls) ─────
   async validateApiKey(rawKey: string): Promise<AuthenticatedPartner | null> {
     try {
       const candidates = await this.prisma.apiKey.findMany({
@@ -37,7 +37,6 @@ export class AuthService {
             return null;
           }
 
-          // fire-and-forget — don't await
           void this.prisma.apiKey.update({
             where: { id: apiKey.id },
             data:  { lastUsedAt: new Date() },
@@ -58,6 +57,46 @@ export class AuthService {
       return null;
     } catch (error) {
       this.logger.error('API key validation error', error);
+      return null;
+    }
+  }
+
+  // ── Validate dashboard JWT session token ──────────────────
+  // Used by ApiKeyGuard when the Authorization header contains a JWT
+  // (dashboard users) instead of a raw API key (external partners).
+  // Verifies signature + checks the account is still ACTIVE in the DB,
+  // so suspending a partner takes effect immediately on the next request.
+  async validateJwtToken(token: string): Promise<AuthenticatedPartner | null> {
+    try {
+      const payload = this.jwtService.verify<{
+        sub:   string;
+        email: string;
+        name:  string;
+        role:  string;
+      }>(token, {
+        secret: this.configService.get<string>('app.jwtSecret'),
+      });
+
+      const partner = await this.prisma.partner.findUnique({
+        where: { id: payload.sub },
+      });
+
+      if (!partner || partner.status !== 'ACTIVE') {
+        this.logger.warn(`JWT auth: partner not found or inactive: ${payload.sub}`);
+        return null;
+      }
+
+      return {
+        id:          partner.id,
+        name:        partner.name,
+        email:       partner.email,
+        country:     partner.country,
+        status:      partner.status,
+        apiKeyId:    'dashboard-session',
+        environment: 'live',
+      };
+    } catch (error) {
+      this.logger.warn('JWT token validation failed:', error);
       return null;
     }
   }
@@ -83,8 +122,7 @@ export class AuthService {
     return { fullKey: rawKey, preview, id: apiKey.id };
   }
 
-  // ── Dashboard login — validates email + password ──────────
-  // Returns JWT with role embedded so AdminGuard can verify admin access
+  // ── Dashboard login ────────────────────────────────────────
   async loginDashboard(
     email:    string,
     password: string,
@@ -117,7 +155,7 @@ export class AuthService {
         sub:   partner.id,
         email: partner.email,
         name:  partner.name,
-        role:  partner.role,   // 'ADMIN' | 'PARTNER' — read by AdminGuard
+        role:  partner.role,
       });
 
       return { accessToken: token };

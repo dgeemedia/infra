@@ -8,6 +8,7 @@ import type { ApiKey, ApiKeyCreated } from '@elorge/types';
 export function useApiKeys(partnerId: string) {
   return useQuery({
     queryKey: ['api-keys', partnerId],
+    enabled:  !!partnerId,   // don't fire until partnerId is hydrated
     queryFn:  async () => {
       const { data } = await api.get<{ success: boolean; data: { apiKeys: ApiKey[] } }>(
         `/v1/partners/${partnerId}`,

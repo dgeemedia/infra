@@ -1,17 +1,16 @@
 // apps/dashboard/src/lib/api.ts
 import axios, { AxiosError } from 'axios';
-import { getSession }        from 'next-auth/react';
+import { getSession, signOut } from 'next-auth/react';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
-// ── Axios instance ─────────────────────────────────────────
 export const api = axios.create({
   baseURL: BASE_URL,
   timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// ── Attach JWT session token to every dashboard request ────
+// ── Attach dashboard JWT to every request ──────────────────
 api.interceptors.request.use(async (config) => {
   const session = await getSession();
   if (session?.accessToken) {
@@ -21,20 +20,23 @@ api.interceptors.request.use(async (config) => {
 });
 
 // ── Centralised error handling ─────────────────────────────
+let signingOut = false; // prevent multiple concurrent signOut calls
+
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ message?: string; code?: string }>) => {
-    if (error.response?.status === 401) {
-      // Session expired — redirect to login
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
-      }
+  async (error: AxiosError<{ message?: string; code?: string }>) => {
+    if (error.response?.status === 401 && typeof window !== 'undefined' && !signingOut) {
+      signingOut = true;
+      // Use NextAuth's signOut — clears the session cookie and all client
+      // state properly before redirecting. window.location.href bypasses
+      // this and can leave stale cookies causing redirect loops.
+      await signOut({ callbackUrl: '/login', redirect: true });
     }
     return Promise.reject(error);
   },
 );
 
-// ── Partner API key instance (for testing endpoints) ───────
+// ── Partner API key instance (for testing partner endpoints)
 export function createPartnerClient(apiKey: string) {
   return axios.create({
     baseURL: BASE_URL,
@@ -46,7 +48,6 @@ export function createPartnerClient(apiKey: string) {
   });
 }
 
-// ── Helper: extract error message ──────────────────────────
 export function getErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data as Record<string, unknown> | undefined;

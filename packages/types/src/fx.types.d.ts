@@ -1,3 +1,4 @@
+// packages/types/src/fx.types.d.ts
 import type { Currency } from '@elorge/constants';
 export interface FxQuote {
     fromCurrency: Currency;

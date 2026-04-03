@@ -1,21 +1,20 @@
-// apps/dashboard/src/app/(dashboard)/overview-client.tsx
 'use client';
 
+// apps/dashboard/src/app/(dashboard)/overview-client.tsx
 import {
   ArrowUpRight, CheckCircle2, XCircle,
   Clock, TrendingUp, Zap,
 } from 'lucide-react';
 
-import { usePayoutStats }    from '@/hooks/usePayoutStats';
-import { useTransactions }   from '@/hooks/useTransactions';
-import { VolumeChart }       from '@/components/charts/VolumeChart';
-import { SuccessRateChart }  from '@/components/charts/SuccessRateChart';
-import { StatusBadge }       from '@/components/transactions/StatusBadge';
+import { usePayoutStats }   from '@/hooks/usePayoutStats';
+import { useTransactions }  from '@/hooks/useTransactions';
+import { VolumeChart }      from '@/components/charts/VolumeChart';
+import { SuccessRateChart } from '@/components/charts/SuccessRateChart';
+import { StatusBadge }      from '@/components/transactions/StatusBadge';
 import {
   formatNaira, formatPercent, formatNumber, timeAgo, cn,
 } from '@/lib/utils';
 
-// ── Stat card ──────────────────────────────────────────────
 function StatCard({
   label, value, sub, icon: Icon, trend, color = 'blue',
 }: {
@@ -53,15 +52,15 @@ function StatCard({
   );
 }
 
-// ── Main component ─────────────────────────────────────────
 export function OverviewClient({ partnerId }: { partnerId: string }) {
-  const { data: stats, isLoading: statsLoading }     = usePayoutStats(partnerId);
-  const { data: recent, isLoading: recentLoading }   = useTransactions({ page: 1, pageSize: 5 });
+  // Both hooks have `enabled: !!partnerId` internally — safe to call
+  // even if partnerId is an empty string on the very first render.
+  const { data: stats, isLoading: statsLoading }   = usePayoutStats(partnerId);
+  const { data: recent, isLoading: recentLoading } = useTransactions({ page: 1, pageSize: 5 });
 
   return (
     <div className="space-y-6">
 
-      {/* ── Page heading ────────────────────────────────── */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Overview</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -69,7 +68,6 @@ export function OverviewClient({ partnerId }: { partnerId: string }) {
         </p>
       </div>
 
-      {/* ── Stat cards ──────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total Payouts"
@@ -102,10 +100,7 @@ export function OverviewClient({ partnerId }: { partnerId: string }) {
         />
       </div>
 
-      {/* ── Charts row ──────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-
-        {/* Volume chart — takes 2/3 */}
         <div className="lg:col-span-2 rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
@@ -117,7 +112,6 @@ export function OverviewClient({ partnerId }: { partnerId: string }) {
           <VolumeChart />
         </div>
 
-        {/* Success rate — takes 1/3 */}
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
           <div className="mb-4">
             <h2 className="text-base font-semibold text-foreground">Success Rate</h2>
@@ -138,14 +132,10 @@ export function OverviewClient({ partnerId }: { partnerId: string }) {
         </div>
       </div>
 
-      {/* ── Recent transactions ──────────────────────────── */}
       <div className="rounded-2xl border border-border bg-card shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-base font-semibold text-foreground">Recent Payouts</h2>
-          <a
-            href="/transactions"
-            className="text-xs font-medium text-primary hover:underline"
-          >
+          <a href="/transactions" className="text-xs font-medium text-primary hover:underline">
             View all →
           </a>
         </div>

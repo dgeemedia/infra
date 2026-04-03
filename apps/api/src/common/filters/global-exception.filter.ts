@@ -1,3 +1,4 @@
+// apps/api/src/common/filters/global-exception.filter.ts
 import {
   ArgumentsHost,
   Catch,
