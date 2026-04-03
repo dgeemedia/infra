@@ -15,21 +15,21 @@ export class WebhooksService {
     private readonly prisma:  PrismaService,   // ← injected
     private readonly config:  ConfigService,
   ) {}
-  
+
   // ── Fire a payout lifecycle event to all partner webhooks ─
   async firePayoutEvent(
     payoutId: string,
     event:    WebhookEventType,
   ): Promise<void> {
     // Load payout
-    const payout = await prisma.payout.findUnique({
+    const payout = await this.prisma.payout.findUnique({
       where: { id: payoutId },
       include: { recipient: true },
     });
     if (!payout) return;
 
     // Find all active webhook configs for this partner that subscribe to this event
-    const webhooks = await prisma.webhookConfig.findMany({
+    const webhooks = await this.prisma.webhookConfig.findMany({
       where: {
         partnerId: payout.partnerId,
         isActive:  true,
@@ -85,7 +85,7 @@ export class WebhooksService {
     const payloadWithSig = { ...payload, signature };
 
     // Create delivery log record
-    const delivery = await prisma.webhookDelivery.create({
+    const delivery = await this.prisma.webhookDelivery.create({
       data: {
         id:        deliveryId,
         payoutId:  payout.id,
@@ -108,7 +108,7 @@ export class WebhooksService {
         timeout: 10_000,
       });
 
-      await prisma.webhookDelivery.update({
+      await this.prisma.webhookDelivery.update({
         where: { id: delivery.id },
         data: {
           status:       'SUCCESS',
@@ -123,7 +123,7 @@ export class WebhooksService {
         ? (error.response?.status ?? 0)
         : 0;
 
-      await prisma.webhookDelivery.update({
+      await this.prisma.webhookDelivery.update({
         where: { id: delivery.id },
         data: {
           status:       'FAILED',
@@ -147,7 +147,7 @@ export class WebhooksService {
   ): Promise<{ id: string; secret: string }> {
     const secret = crypto.randomBytes(32).toString('hex');
 
-    const webhook = await prisma.webhookConfig.create({
+    const webhook = await this.prisma.webhookConfig.create({
       data: { partnerId, url, events, secret, isActive: true },
     });
 
@@ -156,7 +156,7 @@ export class WebhooksService {
 
   // ── List webhooks for a partner ───────────────────────────
   async list(partnerId: string) {
-    return prisma.webhookConfig.findMany({
+    return this.prisma.webhookConfig.findMany({
       where:   { partnerId },
       orderBy: { createdAt: 'desc' },
     });
