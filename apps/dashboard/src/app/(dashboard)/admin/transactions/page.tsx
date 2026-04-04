@@ -1,10 +1,11 @@
 'use client';
 
 // apps/dashboard/src/app/(dashboard)/admin/transactions/page.tsx
-import { useState }              from 'react';
-import { AdminGuard }            from '@/components/admin/AdminGuard';
-import { useAdminTransactions }  from '@/hooks/useAdmin';
-import { StatusBadge }           from '@/components/transactions/StatusBadge';
+import { useState }             from 'react';
+import { AdminGuard }           from '@/components/admin/AdminGuard';
+import { useAdminTransactions } from '@/hooks/useAdmin';
+import { useAdminPartners }     from '@/hooks/useAdmin';
+import { StatusBadge }          from '@/components/transactions/StatusBadge';
 import {
   formatNaira, formatDate, truncateId, cn,
 } from '@/lib/utils';
@@ -20,19 +21,39 @@ interface Payout {
   createdAt:        string;
   deliveredAt:      string | null;
   partner:          { name: string; email: string };
-  recipient:        { fullName: string; bankName: string };
+  recipient:        { fullName: string; bankName: string } | null;
 }
 
 function TransactionsContent() {
-  const [page, setPage]     = useState(1);
-  const [status, setStatus] = useState('');
-  const [search, setSearch] = useState('');
+  const [page,      setPage]      = useState(1);
+  const [status,    setStatus]    = useState('');
+  const [partnerId, setPartnerId] = useState('');
+  const [search,    setSearch]    = useState('');
+
+  const { data: partners } = useAdminPartners();
 
   const { data, isLoading } = useAdminTransactions({
-    page, pageSize: 20, status: status || undefined,
+    page,
+    pageSize: 20,
+    status:    status    || undefined,
+    partnerId: partnerId || undefined,
   });
 
   const payouts = (data?.data ?? []) as Payout[];
+
+  // Client-side reference search (API-side search can be added later)
+  const filtered = search.trim()
+    ? payouts.filter((p) =>
+        p.partnerReference.toLowerCase().includes(search.toLowerCase()),
+      )
+    : payouts;
+
+  function resetFilters() {
+    setStatus('');
+    setPartnerId('');
+    setSearch('');
+    setPage(1);
+  }
 
   return (
     <div className="space-y-5">
@@ -43,18 +64,33 @@ function TransactionsContent() {
         </p>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1 max-w-sm">
+      {/* ── Filters ─────────────────────────────────── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+        {/* Reference search */}
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search reference..."
+            placeholder="Search reference…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
+
+        {/* Partner filter */}
+        <select
+          value={partnerId}
+          onChange={(e) => { setPartnerId(e.target.value); setPage(1); }}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">All partners</option>
+          {(partners ?? []).map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+
+        {/* Status filter */}
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setPage(1); }}
@@ -64,9 +100,19 @@ function TransactionsContent() {
             <option key={s} value={s}>{s || 'All statuses'}</option>
           ))}
         </select>
+
+        {/* Clear filters */}
+        {(status || partnerId || search) && (
+          <button
+            onClick={resetFilters}
+            className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
-      {/* Table */}
+      {/* ── Table ───────────────────────────────────── */}
       <div className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -90,7 +136,7 @@ function TransactionsContent() {
                 </tr>
               ))}
 
-              {!isLoading && payouts.map((payout) => (
+              {!isLoading && filtered.map((payout) => (
                 <tr key={payout.payoutId} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs">
                     {truncateId(payout.partnerReference)}
@@ -118,7 +164,7 @@ function TransactionsContent() {
                 </tr>
               ))}
 
-              {!isLoading && payouts.length === 0 && (
+              {!isLoading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
                     No transactions found.

@@ -61,6 +61,16 @@ enum AuditAction {
   COMPLIANCE_FLAGGED
 }
 
+enum NotificationType {
+  PAYOUT_DELIVERED
+  PAYOUT_FAILED
+  PAYOUT_FLAGGED
+  WEBHOOK_FAILED
+  API_KEY_CREATED
+  ACCOUNT_SUSPENDED
+  SYSTEM
+}
+
 // ── Partner ───────────────────────────────────────────────────
 model Partner {
   id           String        @id @default(uuid())
@@ -78,6 +88,7 @@ model Partner {
   payouts        Payout[]
   webhookConfigs WebhookConfig[]
   auditLogs      AuditLog[]
+  notifications Notification[]
 
   @@map("partners")
 }
@@ -208,4 +219,21 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+model Notification {
+  id         String           @id @default(uuid())
+  partnerId  String
+  type       NotificationType
+  title      String
+  body       String
+  read       Boolean          @default(false)
+  metadata   Json?            // e.g. { payoutId, webhookId }
+  createdAt  DateTime         @default(now())
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, read])
+  @@index([partnerId, createdAt])
+  @@map("notifications")
 }

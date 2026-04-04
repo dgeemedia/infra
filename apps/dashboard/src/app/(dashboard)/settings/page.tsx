@@ -1,23 +1,45 @@
-// apps/dashboard/src/app/(dashboard)/settings/page.tsx
 'use client';
 
-import { useState }    from 'react';
-import { useSession }  from 'next-auth/react';
+// apps/dashboard/src/app/(dashboard)/settings/page.tsx
+import { useState }        from 'react';
+import { useSession }      from 'next-auth/react';
+import { signOut }         from 'next-auth/react';
+import { useMutation }     from '@tanstack/react-query';
 import {
-  Building2, Mail, Globe, Shield,
-  CheckCircle2, Loader2,
+  Building2, Globe, Shield,
+  CheckCircle2, Loader2, AlertTriangle,
 } from 'lucide-react';
+import { api, getErrorMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 export default function SettingsPage() {
   const { data: session } = useSession();
-  const [saved, setSaved] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saved,   setSaved]   = useState(false);
+  const [saving,  setSaving]  = useState(false);
+  const [showSuspendConfirm, setShowSuspendConfirm] = useState(false);
+  const [suspendError,       setSuspendError]       = useState('');
+
+  // ── Self-suspend mutation ────────────────────────────────
+  const selfSuspendMutation = useMutation({
+    mutationFn: async () => {
+      const partnerId = (session?.user as { id?: string } | undefined)?.id;
+      if (!partnerId) throw new Error('No partner session');
+      // Partners call the same suspend endpoint via the dashboard JWT
+      await api.patch(`/v1/admin/partners/${partnerId}/suspend`);
+    },
+    onSuccess: async () => {
+      // Sign the partner out — their account is now suspended
+      await signOut({ callbackUrl: '/login?suspended=1' });
+    },
+    onError: (err) => {
+      setSuspendError(getErrorMessage(err));
+    },
+  });
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 800)); // simulate API call
+    await new Promise((r) => setTimeout(r, 800));
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -87,7 +109,6 @@ export default function SettingsPage() {
             </label>
             <input
               type="url"
-              defaultValue="https://finestpay.co.uk"
               className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -114,11 +135,11 @@ export default function SettingsPage() {
 
         <div className="space-y-3">
           {[
-            { label: 'Partner ID',        value: (session?.user as { id?: string } | undefined)?.id ?? 'N/A' },
-            { label: 'API Base URL',      value: 'https://api.elorge.com' },
-            { label: 'Sandbox Base URL',  value: 'https://sandbox.elorge.com' },
-            { label: 'API Version',       value: 'v1' },
-            { label: 'Auth Method',       value: 'Bearer token (Authorization header)' },
+            { label: 'Partner ID',       value: (session?.user as { id?: string } | undefined)?.id ?? 'N/A' },
+            { label: 'API Base URL',     value: 'https://api.elorge.com' },
+            { label: 'Sandbox Base URL', value: 'https://sandbox.elorge.com' },
+            { label: 'API Version',      value: 'v1' },
+            { label: 'Auth Method',      value: 'Bearer token (Authorization header)' },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between rounded-lg bg-muted/40 px-4 py-3">
               <span className="text-sm text-muted-foreground">{label}</span>
@@ -145,40 +166,78 @@ export default function SettingsPage() {
           Security
         </h2>
 
-        <div className="space-y-3">
-          {/* Allowed IPs note */}
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">
-              IP Allowlist (coming soon)
-            </label>
-            <input
-              type="text"
-              disabled
-              placeholder="e.g. 1.2.3.4, 5.6.7.8"
-              className="w-full rounded-lg border border-input bg-muted px-3.5 py-2.5 text-sm text-muted-foreground cursor-not-allowed"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Restrict API access to specific IP addresses. Contact support to enable.
-            </p>
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-1.5">
+            IP Allowlist (coming soon)
+          </label>
+          <input
+            type="text"
+            disabled
+            placeholder="e.g. 1.2.3.4, 5.6.7.8"
+            className="w-full rounded-lg border border-input bg-muted px-3.5 py-2.5 text-sm text-muted-foreground cursor-not-allowed"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">
+            Restrict API access to specific IP addresses. Contact support to enable.
+          </p>
         </div>
       </div>
 
       {/* ── Danger zone ─────────────────────────────────── */}
-      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6">
-        <h2 className="text-base font-semibold text-destructive mb-2">Danger Zone</h2>
-        <p className="text-sm text-muted-foreground mb-4">
+      <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 space-y-4">
+        <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
+        <p className="text-sm text-muted-foreground">
           Suspending your account will immediately stop all API access and webhook delivery.
-          Contact Elorge support to reactivate.
+          You will be signed out automatically. To reactivate, email{' '}
+          <a href="mailto:support@elorge.com" className="underline text-foreground">
+            support@elorge.com
+          </a>.
         </p>
         <button
+          onClick={() => { setShowSuspendConfirm(true); setSuspendError(''); }}
           className="rounded-lg border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
-          onClick={() => alert('Please contact support@elorge.com to request account suspension.')}
         >
-          Request Account Suspension
+          Suspend My Account
         </button>
       </div>
 
+      {/* ── Self-suspend confirm modal ───────────────────── */}
+      {showSuspendConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 mx-auto">
+              <AlertTriangle className="h-6 w-6 text-destructive" />
+            </div>
+            <h2 className="mt-4 text-center text-base font-semibold text-foreground">
+              Suspend Your Account?
+            </h2>
+            <p className="mt-2 text-center text-sm text-muted-foreground">
+              All API access and webhook delivery will stop immediately.
+              You will be signed out. Contact{' '}
+              <strong>support@elorge.com</strong> to reactivate.
+            </p>
+            {suspendError && (
+              <p className="mt-3 text-center text-xs text-destructive">{suspendError}</p>
+            )}
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => setShowSuspendConfirm(false)}
+                disabled={selfSuspendMutation.isPending}
+                className="flex-1 rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => selfSuspendMutation.mutate()}
+                disabled={selfSuspendMutation.isPending}
+                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 disabled:opacity-50 transition-colors"
+              >
+                {selfSuspendMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Yes, Suspend
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

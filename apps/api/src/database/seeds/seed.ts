@@ -4,10 +4,12 @@
  * Run: cd apps/api && npx prisma db seed
  *
  * Creates:
- *  - FinestPay UK as a test partner
+ *  - Elorge admin account
+ *  - FinestPay UK as a test partner (with dashboard login)
  *  - Live + sandbox API keys
  *  - A webhook config
  *  - 10 sample payout records in various statuses
+ *  - Sample notifications
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -19,7 +21,8 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // ── Clean slate ──────────────────────────────────────────
+  // ── Clean slate (order matters — FK constraints) ─────────
+  await prisma.notification.deleteMany();
   await prisma.webhookDelivery.deleteMany();
   await prisma.webhookConfig.deleteMany();
   await prisma.recipient.deleteMany();
@@ -28,17 +31,41 @@ async function main() {
   await prisma.auditLog.deleteMany();
   await prisma.partner.deleteMany();
 
-  // ── Create FinestPay UK partner ──────────────────────────
-  const partner = await prisma.partner.create({
+  // ── Admin password ────────────────────────────────────────
+  // Dashboard login: admin@elorge.com / Admin1234!
+  const adminPasswordHash = await bcrypt.hash('Admin1234!', 12);
+
+  const admin = await prisma.partner.create({
     data: {
-      id:      'partner_finestpay_001',
-      name:    'FinestPay UK',
-      email:   'tech@finestpay.co.uk',
-      country: 'GB',
-      status:  'ACTIVE',
+      id:           'partner_elorge_admin_001',
+      name:         'Elorge Admin',
+      email:        'admin@elorge.com',
+      passwordHash: adminPasswordHash,
+      role:         'ADMIN',
+      country:      'GB',
+      status:       'ACTIVE',
     },
   });
-  console.log(`✅ Partner created: ${partner.name} (${partner.id})`);
+  console.log(`✅ Admin created: ${admin.name} (${admin.email})`);
+  console.log(`   Password: Admin1234!`);
+
+  // ── Partner password ──────────────────────────────────────
+  // Dashboard login: tech@finestpay.co.uk / Partner1234!
+  const partnerPasswordHash = await bcrypt.hash('Partner1234!', 12);
+
+  const partner = await prisma.partner.create({
+    data: {
+      id:           'partner_finestpay_001',
+      name:         'FinestPay UK',
+      email:        'tech@finestpay.co.uk',
+      passwordHash: partnerPasswordHash,
+      role:         'PARTNER',
+      country:      'GB',
+      status:       'ACTIVE',
+    },
+  });
+  console.log(`✅ Partner created: ${partner.name} (${partner.email})`);
+  console.log(`   Password: Partner1234!`);
 
   // ── Generate API keys ─────────────────────────────────────
   const liveRawKey    = 'el_live_finestpay_test_key_do_not_use_in_production_abc123';
@@ -98,7 +125,7 @@ async function main() {
         accountNumber: '0123456789',
         phone:         '+2348012345678',
       },
-      deliveredAt: new Date(Date.now() - 1 * 60 * 60 * 1000), // 1hr ago
+      deliveredAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
     },
     {
       partnerReference: 'FP_TXN_002',
@@ -132,6 +159,7 @@ async function main() {
         bankCode:      '057',
         bankName:      'Zenith Bank',
         accountNumber: '1122334455',
+        phone:         null,
       },
       deliveredAt: null,
     },
@@ -149,6 +177,7 @@ async function main() {
         bankCode:      '011',
         bankName:      'First Bank of Nigeria',
         accountNumber: '2233445566',
+        phone:         null,
       },
       deliveredAt: null,
     },
@@ -166,6 +195,7 @@ async function main() {
         bankCode:      '033',
         bankName:      'United Bank for Africa',
         accountNumber: '3344556677',
+        phone:         null,
       },
       deliveredAt: null,
     },
@@ -183,6 +213,7 @@ async function main() {
         bankCode:      '070',
         bankName:      'Fidelity Bank',
         accountNumber: '4455667788',
+        phone:         null,
       },
       deliveredAt: new Date(Date.now() - 5 * 60 * 60 * 1000),
     },
@@ -200,6 +231,7 @@ async function main() {
         bankCode:      '100004',
         bankName:      'OPay',
         accountNumber: '5566778899',
+        phone:         null,
       },
       deliveredAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
     },
@@ -217,6 +249,7 @@ async function main() {
         bankCode:      '057',
         bankName:      'Zenith Bank',
         accountNumber: '6677889900',
+        phone:         null,
       },
       deliveredAt: null,
     },
@@ -234,6 +267,7 @@ async function main() {
         bankCode:      '044',
         bankName:      'Access Bank',
         accountNumber: '7788990011',
+        phone:         null,
       },
       deliveredAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
     },
@@ -251,11 +285,13 @@ async function main() {
         bankCode:      '999992',
         bankName:      'Moniepoint',
         accountNumber: '8899001122',
+        phone:         null,
       },
       deliveredAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
     },
   ];
 
+  console.log('\n💸 Creating payouts...');
   for (const p of samplePayouts) {
     const payout = await prisma.payout.create({
       data: {
@@ -269,7 +305,12 @@ async function main() {
         status:           p.status,
         narration:        p.narration,
         deliveredAt:      p.deliveredAt,
-        pspReference:     p.status === 'DELIVERED' ? `BANKLY_${uuidv4().substring(0, 8).toUpperCase()}` : undefined,
+        pspReference:     p.status === 'DELIVERED'
+          ? `BANKLY_${uuidv4().substring(0, 8).toUpperCase()}`
+          : undefined,
+        failureReason:    p.status === 'FAILED'
+          ? 'Recipient account number invalid'
+          : undefined,
         recipient: {
           create: {
             fullName:      p.recipient.fullName,
@@ -281,12 +322,68 @@ async function main() {
         },
       },
     });
-    console.log(`   💸 ${payout.partnerReference} [${payout.status}] → ${p.recipient.fullName}`);
+    console.log(`   ${payout.partnerReference} [${payout.status}] → ${p.recipient.fullName}`);
   }
 
+  // ── Seed sample notifications ─────────────────────────────
+  await prisma.notification.createMany({
+    data: [
+      {
+        partnerId: partner.id,
+        type:      'PAYOUT_DELIVERED',
+        title:     'Payout Delivered',
+        body:      'FP_TXN_001 was successfully credited to Chukwuemeka Obi.',
+        read:      false,
+        metadata:  { partnerReference: 'FP_TXN_001' },
+        createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000),
+      },
+      {
+        partnerId: partner.id,
+        type:      'PAYOUT_FAILED',
+        title:     'Payout Failed',
+        body:      'FP_TXN_004 failed after all retries. Recipient account number invalid.',
+        read:      false,
+        metadata:  { partnerReference: 'FP_TXN_004' },
+        createdAt: new Date(Date.now() - 3 * 60 * 60 * 1000),
+      },
+      {
+        partnerId: partner.id,
+        type:      'PAYOUT_FLAGGED',
+        title:     'Payout Flagged',
+        body:      'FP_TXN_008 is on hold pending compliance review.',
+        read:      false,
+        metadata:  { partnerReference: 'FP_TXN_008' },
+        createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000),
+      },
+      {
+        partnerId: partner.id,
+        type:      'PAYOUT_DELIVERED',
+        title:     'Payout Delivered',
+        body:      'FP_TXN_002 was successfully credited to Adaeze Nwosu.',
+        read:      true,
+        metadata:  { partnerReference: 'FP_TXN_002' },
+        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      },
+      {
+        partnerId: partner.id,
+        type:      'WEBHOOK_FAILED',
+        title:     'Webhook Delivery Failed',
+        body:      'Failed to deliver payout.delivered to https://api.finestpay.co.uk/webhooks/elorge. A retry is scheduled in 5 minutes.',
+        read:      true,
+        metadata:  { partnerReference: 'FP_TXN_006' },
+        createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000),
+      },
+    ],
+  });
+  console.log('\n✅ Notifications seeded');
+
+  // ── Summary ───────────────────────────────────────────────
   console.log('\n✅ Seed complete!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('Test with these API keys:');
+  console.log('Dashboard logins:');
+  console.log('  Admin:   admin@elorge.com     / Admin1234!');
+  console.log('  Partner: tech@finestpay.co.uk / Partner1234!');
+  console.log('\nAPI keys (for direct API testing):');
   console.log(`  Live:    Bearer ${liveRawKey}`);
   console.log(`  Sandbox: Bearer ${sandboxRawKey}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');

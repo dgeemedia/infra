@@ -1,7 +1,4 @@
-// Every PSP adapter (Bankly, Flutterwave, etc.) must implement this interface.
-// The Payout Orchestrator calls this interface — it never calls Bankly directly.
-// Swapping PSPs = swap the adapter, nothing else changes.
-
+// apps/api/src/modules/psp/psp.interface.ts
 export interface PspTransferRequest {
   reference:     string;   // Elorge payout ID — used as idempotency key
   amount:        number;   // Naira amount (NGN)

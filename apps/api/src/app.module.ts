@@ -18,73 +18,53 @@ import {
   complianceConfig,
 } from './config/app.config';
 
-import { AuthModule }       from './modules/auth/auth.module';
-import { PartnersModule }   from './modules/partners/partners.module';
-import { PayoutsModule }    from './modules/payouts/payouts.module';
-import { FxModule }         from './modules/fx/fx.module';
-import { ComplianceModule } from './modules/compliance/compliance.module';
-import { WebhooksModule }   from './modules/webhooks/webhooks.module';
-import { PspModule }        from './modules/psp/psp.module';
-import { AdminModule }      from './modules/admin/admin.module';
-import { HealthController } from './health.controller';
-import { ApiKeyGuard }      from './common/guards/api-key.guard';
+import { AuthModule }          from './modules/auth/auth.module';
+import { PartnersModule }      from './modules/partners/partners.module';
+import { PayoutsModule }       from './modules/payouts/payouts.module';
+import { FxModule }            from './modules/fx/fx.module';
+import { ComplianceModule }    from './modules/compliance/compliance.module';
+import { WebhooksModule }      from './modules/webhooks/webhooks.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PspModule }           from './modules/psp/psp.module';
+import { AdminModule }         from './modules/admin/admin.module';
+import { HealthController }    from './health.controller';
+import { ApiKeyGuard }         from './common/guards/api-key.guard';
 
 @Module({
   imports: [
-    // ── Config — loads all environment variables ────────────
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [
-        appConfig,
-        databaseConfig,
-        redisConfig,
-        pspConfig,
-        fxConfig,
-        complianceConfig,
-      ],
+      load: [appConfig, databaseConfig, redisConfig, pspConfig, fxConfig, complianceConfig],
     }),
 
-    // ── Prisma — shared DB service ───────────────────────────
     PrismaModule,
 
-    // ── Bull / Redis — async job queues ─────────────────────
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         redis: config.get<string>('redis.url') ?? 'redis://localhost:6379',
-        defaultJobOptions: {
-          removeOnComplete: true,
-          removeOnFail:     false,
-        },
+        defaultJobOptions: { removeOnComplete: true, removeOnFail: false },
         tls: config.get<string>('redis.url')?.startsWith('rediss') ? {} : undefined,
       }),
     }),
 
-    // ── Cron Jobs ────────────────────────────────────────────
     ScheduleModule.forRoot(),
-
-    // ── Health Checks ────────────────────────────────────────
     TerminusModule,
     HttpModule,
 
-    // ── Feature Modules ──────────────────────────────────────
     AuthModule,
     PartnersModule,
     PayoutsModule,
     FxModule,
     ComplianceModule,
     WebhooksModule,
+    NotificationsModule,   // ← NEW
     PspModule,
     AdminModule,
   ],
   controllers: [HealthController],
   providers: [
-    // ── Global API Key Guard (for partner endpoints) ─────────
-    // Admin routes bypass this via @Public() on AdminController
-    {
-      provide:  APP_GUARD,
-      useClass: ApiKeyGuard,
-    },
+    { provide: APP_GUARD, useClass: ApiKeyGuard },
   ],
 })
 export class AppModule {}
