@@ -2,15 +2,20 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
 import { api }      from '@/lib/api';
 import type { PartnerStats } from '@elorge/types';
 
 export function usePayoutStats(partnerId: string) {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
+
   return useQuery({
     queryKey: ['stats', partnerId],
     // Don't fire until we have a real partnerId — prevents a 400/404
     // on first render before the session is hydrated client-side.
-    enabled:  !!partnerId,
+    // Also skip entirely for admin accounts — they have no partner payouts.
+    enabled:  !!partnerId && !isAdmin,
     queryFn:  async () => {
       const { data } = await api.get<{ success: boolean; data: PartnerStats }>(
         `/v1/partners/${partnerId}/stats`,
@@ -24,8 +29,12 @@ export function usePayoutStats(partnerId: string) {
 
 // ── Volume chart data (last N days) ───────────────────────
 export function useVolumeData(days = 30) {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
+
   return useQuery({
     queryKey: ['volume', days],
+    enabled:  !isAdmin, // admin has no payouts to chart
     queryFn:  async () => {
       const endDate   = new Date();
       const startDate = new Date();

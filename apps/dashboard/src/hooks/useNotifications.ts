@@ -2,6 +2,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSession } from 'next-auth/react';
 import { api } from '@/lib/api';
 
 interface Notification {
@@ -20,6 +21,9 @@ interface NotificationsResponse {
 }
 
 export function useNotifications() {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
+
   return useQuery({
     queryKey: ['notifications'],
     queryFn:  async () => {
@@ -28,8 +32,9 @@ export function useNotifications() {
       );
       return data.data;
     },
-    staleTime:       30_000,
-    refetchInterval: 30_000, // poll every 30s for new notifications
+    enabled:         !isAdmin,  // admin has no partner notifications
+    staleTime:       60_000,    // was 30_000
+    refetchInterval: 60_000,    // was 30_000 — halved to reduce Supabase load
   });
 }
 

@@ -1,12 +1,15 @@
 'use client';
 
 // apps/dashboard/src/app/(dashboard)/overview-client.tsx
+import { useSession }      from 'next-auth/react';
 import {
   ArrowUpRight, CheckCircle2, XCircle,
-  Clock, TrendingUp, Zap,
+  Clock, TrendingUp, Zap, ShieldCheck,
+  AlertTriangle, DollarSign, Users,
 } from 'lucide-react';
 
 import { usePayoutStats }   from '@/hooks/usePayoutStats';
+import { useAdminStats }    from '@/hooks/useAdmin';
 import { useTransactions }  from '@/hooks/useTransactions';
 import { VolumeChart }      from '@/components/charts/VolumeChart';
 import { SuccessRateChart } from '@/components/charts/SuccessRateChart';
@@ -23,13 +26,14 @@ function StatCard({
   sub?:   string;
   icon:   React.ElementType;
   trend?: string;
-  color?: 'blue' | 'green' | 'red' | 'amber';
+  color?: 'blue' | 'green' | 'red' | 'amber' | 'purple';
 }) {
   const colorMap = {
-    blue:  'bg-blue-50  text-blue-600  border-blue-100',
-    green: 'bg-green-50 text-green-600 border-green-100',
-    red:   'bg-red-50   text-red-600   border-red-100',
-    amber: 'bg-amber-50 text-amber-600 border-amber-100',
+    blue:   'bg-blue-50   text-blue-600   border-blue-100',
+    green:  'bg-green-50  text-green-600  border-green-100',
+    red:    'bg-red-50    text-red-600    border-red-100',
+    amber:  'bg-amber-50  text-amber-600  border-amber-100',
+    purple: 'bg-purple-50 text-purple-600 border-purple-100',
   };
 
   return (
@@ -52,15 +56,130 @@ function StatCard({
   );
 }
 
-export function OverviewClient({ partnerId }: { partnerId: string }) {
-  // Both hooks have `enabled: !!partnerId` internally — safe to call
-  // even if partnerId is an empty string on the very first render.
+// ── Admin overview ─────────────────────────────────────────────────────────
+function AdminOverview() {
+  const { data: stats, isLoading } = useAdminStats();
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Platform Overview</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Real-time stats across all partners and payouts
+        </p>
+      </div>
+
+      {/* Partner stats */}
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Partners</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Total Partners"
+            value={isLoading ? '—' : formatNumber(stats?.totalPartners ?? 0)}
+            sub="All registered"
+            icon={Users}
+            color="blue"
+          />
+          <StatCard
+            label="Active Partners"
+            value={isLoading ? '—' : formatNumber(stats?.activePartners ?? 0)}
+            icon={CheckCircle2}
+            color="green"
+          />
+          <StatCard
+            label="Suspended"
+            value={isLoading ? '—' : formatNumber((stats?.totalPartners ?? 0) - (stats?.activePartners ?? 0))}
+            icon={XCircle}
+            color="red"
+          />
+        </div>
+      </div>
+
+      {/* Payout stats */}
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Payouts</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Total Payouts"
+            value={isLoading ? '—' : formatNumber(stats?.totalPayouts ?? 0)}
+            sub="All time"
+            icon={Zap}
+            color="blue"
+          />
+          <StatCard
+            label="Delivered"
+            value={isLoading ? '—' : formatNumber(stats?.deliveredPayouts ?? 0)}
+            trend={isLoading ? undefined : `${formatPercent(stats?.successRate ?? 0)} rate`}
+            icon={CheckCircle2}
+            color="green"
+          />
+          <StatCard
+            label="Failed"
+            value={isLoading ? '—' : formatNumber(stats?.failedPayouts ?? 0)}
+            icon={XCircle}
+            color="red"
+          />
+          <StatCard
+            label="Flagged"
+            value={isLoading ? '—' : formatNumber(stats?.flaggedPayouts ?? 0)}
+            sub="Needs review"
+            icon={AlertTriangle}
+            color="amber"
+          />
+        </div>
+      </div>
+
+      {/* Financial stats */}
+      <div>
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Financials</p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <StatCard
+            label="Total Volume Delivered"
+            value={isLoading ? '—' : formatNaira(stats?.totalVolumeNaira ?? 0)}
+            sub="Naira credited to recipients"
+            icon={TrendingUp}
+            color="green"
+          />
+          <StatCard
+            label="Total Fees Collected"
+            value={isLoading ? '—' : formatNaira(stats?.totalFeesCollected ?? 0)}
+            sub="Platform revenue"
+            icon={DollarSign}
+            color="purple"
+          />
+        </div>
+      </div>
+
+      {/* Quick links */}
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+        <h2 className="mb-4 text-sm font-semibold text-foreground">Quick Actions</h2>
+        <div className="flex flex-wrap gap-3">
+          {[
+            { href: '/admin/partners',     label: 'Manage Partners'   },
+            { href: '/admin/transactions', label: 'View Transactions'  },
+            { href: '/admin/flagged',      label: `Review Flagged (${stats?.flaggedPayouts ?? 0})` },
+          ].map(({ href, label }) => (
+            <a
+              key={href}
+              href={href}
+              className="rounded-lg border border-border bg-muted/40 px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Partner overview ───────────────────────────────────────────────────────
+function PartnerOverview({ partnerId }: { partnerId: string }) {
   const { data: stats, isLoading: statsLoading }   = usePayoutStats(partnerId);
   const { data: recent, isLoading: recentLoading } = useTransactions({ page: 1, pageSize: 5 });
 
   return (
     <div className="space-y-6">
-
       <div>
         <h1 className="text-2xl font-bold text-foreground">Overview</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -179,4 +298,13 @@ export function OverviewClient({ partnerId }: { partnerId: string }) {
       </div>
     </div>
   );
+}
+
+// ── Root export — switches based on role ───────────────────────────────────
+export function OverviewClient({ partnerId }: { partnerId: string }) {
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
+
+  if (isAdmin) return <AdminOverview />;
+  return <PartnerOverview partnerId={partnerId} />;
 }
