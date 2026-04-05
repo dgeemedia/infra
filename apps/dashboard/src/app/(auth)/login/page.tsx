@@ -1,14 +1,16 @@
-// apps/dashboard/src/app/(auth)/login/page.tsx
 'use client';
 
+// apps/dashboard/src/app/(auth)/login/page.tsx
 import { useState, FormEvent } from 'react';
 import { signIn }              from 'next-auth/react';
-import { useRouter }           from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { cn }                  from '@/lib/utils';
 
 export default function LoginPage() {
-  const router = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const wasSuspended = searchParams.get('reason') === 'suspended';
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -41,7 +43,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-50 to-blue-50 p-4">
       <div className="w-full max-w-md">
 
-        {/* ── Brand ─────────────────────────────────────── */}
+        {/* Brand */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-2xl font-bold shadow-lg">
             E
@@ -52,8 +54,20 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* ── Card ──────────────────────────────────────── */}
+        {/* Card */}
         <div className="rounded-2xl border border-border bg-card p-8 shadow-sm">
+
+          {/* Suspended notice */}
+          {wasSuspended && (
+            <div className="mb-5 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+              Your account has been suspended. Contact{' '}
+              <a href="mailto:support@elorge.com" className="font-medium underline">
+                support@elorge.com
+              </a>{' '}
+              to reactivate.
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5">
 
             {/* Error banner */}
@@ -123,13 +137,21 @@ export default function LoginPage() {
 
           </form>
 
-          {/* Sandbox hint */}
-          <p className="mt-6 text-center text-xs text-muted-foreground">
-            Need access? Contact{' '}
-            <a href="mailto:support@elorge.com" className="text-primary hover:underline">
-              support@elorge.com
-            </a>
-          </p>
+          {/* Divider */}
+          <div className="my-6 flex items-center gap-3">
+            <div className="flex-1 border-t border-border" />
+            <span className="text-xs text-muted-foreground">New to Elorge?</span>
+            <div className="flex-1 border-t border-border" />
+          </div>
+
+          {/* Expression of interest CTA */}
+          <a
+            href="/interest"
+            className="block w-full rounded-lg border border-border px-4 py-2.5 text-center text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            Express Interest in Partnering
+          </a>
+
         </div>
 
         {/* Footer */}

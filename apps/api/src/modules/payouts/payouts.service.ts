@@ -25,14 +25,20 @@ export class PayoutsService {
 
   constructor(
     private readonly repo:       PayoutsRepository,
-    private readonly fx:         FxService,
+    private readonly fx:         FxService,   // used ONLY for fee calculation, not FX conversion
     private readonly compliance: ComplianceService,
     private readonly pspFactory: PspFactory,
     @InjectQueue(PAYOUT_QUEUE) private readonly payoutQueue: Queue,
   ) {}
 
   // ══════════════════════════════════════════════════════════
-  //  CREATE PAYOUT — called by FinestPay via POST /v1/payouts
+  //  CREATE PAYOUT — called by partner via POST /v1/payouts
+  //
+  //  Transparent Fee Model:
+  //   - Partner calculates their own FX and provides nairaAmount
+  //   - Elorge delivers exactly nairaAmount to the recipient
+  //   - Elorge charges a separate platform fee (in GBP) logged
+  //     for invoicing — NOT deducted from nairaAmount
   // ══════════════════════════════════════════════════════════
   async create(
     partnerId: string,
@@ -64,13 +70,19 @@ export class PayoutsService {
       bankCode:      dto.recipient.bankCode,
     });
 
-    // ── 4. FX calculation ─────────────────────────────────
-    const { nairaAmount, rate, fee } = await this.fx.convertToNaira(
-      dto.sendCurrency,
-      dto.sendAmount,
-    );
+    // ── 4. Platform fee (env-configured, GBP) ────────────
+    //    This is Elorge's service charge — logged for invoicing.
+    //    It is NOT deducted from nairaAmount. Partner receives
+    //    a monthly invoice for the total fee.
+    const fee = this.fx.calculateFee(dto.sendAmount);
 
-    // ── 5. Create DB record ───────────────────────────────
+    // ── 5. nairaAmount comes from partner — no FX needed ─
+    //    Partner's FX engine already calculated this.
+    //    exchangeRate is optional — stored for audit only.
+    const nairaAmount  = dto.nairaAmount;
+    const exchangeRate = dto.exchangeRate ?? 0;
+
+    // ── 6. Create DB record ───────────────────────────────
     const bankName = getBankName(dto.recipient.bankCode);
     const payout   = await this.repo.create({
       partnerId:        partnerId,
@@ -78,7 +90,7 @@ export class PayoutsService {
       sendAmount:       dto.sendAmount,
       sendCurrency:     dto.sendCurrency,
       nairaAmount,
-      exchangeRate:     rate,
+      exchangeRate,
       fee,
       narration:        dto.narration,
       recipient: {
@@ -90,21 +102,21 @@ export class PayoutsService {
       },
     });
 
-    // ── 6. If flagged by compliance → hold for review ─────
+    // ── 7. If flagged by compliance → hold for review ─────
     if (screening.flagged) {
       await this.repo.updateStatus(payout.id, PayoutStatus.FLAGGED, {
         failureReason: screening.matchDetails ?? 'Sanctions screening match',
       });
       this.logger.warn(`Payout ${payout.id} flagged: ${screening.matchDetails ?? ''}`);
     } else {
-      // ── 7. Push to async queue for PSP dispatch ──────────
+      // ── 8. Push to async queue for PSP dispatch ──────────
       await this.payoutQueue.add(
         'dispatch',
         { payoutId: payout.id },
         {
           attempts:  5,
           backoff:   { type: 'exponential', delay: 5000 },
-          jobId:     payout.id,            // idempotency — prevents duplicate jobs
+          jobId:     payout.id,        // idempotency — prevents duplicate jobs
           removeOnComplete: true,
           removeOnFail:     false,
         },
@@ -112,8 +124,8 @@ export class PayoutsService {
       this.logger.log(`Payout ${payout.id} queued for dispatch`);
     }
 
-    // ── 8. Return immediately — don't wait for bank ───────
-    return this.formatResponse(payout, nairaAmount, rate, fee);
+    // ── 9. Return immediately — don't wait for bank ───────
+    return this.formatResponse(payout, nairaAmount, exchangeRate, fee);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -135,11 +147,11 @@ export class PayoutsService {
     // Mark as processing
     await this.repo.updateStatus(payoutId, PayoutStatus.PROCESSING);
 
-    // Call PSP adapter
+    // Call PSP — delivers the exact nairaAmount the partner specified
     const psp    = this.pspFactory.getAdapter();
     const result = await psp.transfer({
       reference:     payoutId,
-      amount:        Number(payout.nairaAmount),
+      amount:        Number(payout.nairaAmount),   // partner's exact NGN amount
       bankCode:      payout.recipient.bankCode,
       accountNumber: payout.recipient.accountNumber,
       accountName:   payout.recipient.fullName,
@@ -159,7 +171,7 @@ export class PayoutsService {
         failureReason: result.message ?? 'PSP transfer failed',
       });
       this.logger.warn(`Payout ${payoutId} FAILED: ${result.message ?? 'unknown'}`);
-      // Throw so BullMQ knows to retry
+      // Throw so BullMQ retries the job
       throw new Error(`Transfer failed: ${result.message ?? 'unknown'}`);
     }
   }
@@ -213,7 +225,7 @@ export class PayoutsService {
     });
 
     return {
-      data:       data.map((p) => ({
+      data: data.map((p) => ({
         payoutId:          p.id,
         partnerReference:  p.partnerReference,
         partnerId:         p.partnerId,
@@ -239,7 +251,7 @@ export class PayoutsService {
   private formatResponse(
     payout:      { id: string; partnerReference: string; status: string; createdAt: Date },
     nairaAmount: number,
-    rate:        number,
+    exchangeRate: number,
     fee:         number,
   ): PayoutResponse {
     return {
@@ -247,7 +259,7 @@ export class PayoutsService {
       partnerReference:  payout.partnerReference,
       status:            payout.status as PayoutStatus,
       nairaAmount,
-      exchangeRate:      rate,
+      exchangeRate,
       fee,
       estimatedDelivery: 'same_day',
       createdAt:         payout.createdAt.toISOString(),

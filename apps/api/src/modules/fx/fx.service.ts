@@ -44,9 +44,9 @@ export class FxService {
 
   // ── Build a full FX quote for the API response ────────────
   async buildQuote(fromCurrency: Currency, sendAmount: number): Promise<FxQuote> {
-    const rate        = await this.getRate(fromCurrency);
-    const fee         = this.calculateFee(sendAmount);
-    const netAmount   = sendAmount - fee;
+    const rate          = await this.getRate(fromCurrency);
+    const fee           = this.calculateFee(sendAmount);
+    const netAmount     = sendAmount - fee;
     const recipientGets = parseFloat((netAmount * rate).toFixed(2));
 
     const expiresAt = new Date();
@@ -71,24 +71,35 @@ export class FxService {
     fromCurrency: Currency,
     sendAmount:   number,
   ): Promise<{ nairaAmount: number; rate: number; fee: number }> {
-    const rate  = await this.getRate(fromCurrency);
-    const fee   = this.calculateFee(sendAmount);
+    const rate        = await this.getRate(fromCurrency);
+    const fee         = this.calculateFee(sendAmount);
     const nairaAmount = parseFloat(((sendAmount - fee) * rate).toFixed(2));
 
     return { nairaAmount, rate, fee };
   }
 
-  // ── Fee calculation — flat rate structure ─────────────────
-  private calculateFee(amount: number): number {
-    // Fee tiers (in GBP equivalent):
-    // £1   – £50:   £1.99 flat
-    // £51  – £200:  £2.99 flat
-    // £201 – £500:  £3.99 flat
-    // £501+:        £4.99 flat
-    if (amount <= 50)  return 1.99;
-    if (amount <= 200) return 2.99;
-    if (amount <= 500) return 3.99;
-    return 4.99;
+  // ── Fee calculation — reads tiers from config/.env ────────
+  //
+  //  Change fee tiers without a code deploy — just update .env:
+  //
+  //   FEE_TIER1_MAX_GBP=50    FEE_TIER1_GBP=1.99
+  //   FEE_TIER2_MAX_GBP=200   FEE_TIER2_GBP=2.99
+  //   FEE_TIER3_MAX_GBP=500   FEE_TIER3_GBP=3.99
+  //                           FEE_TIER4_GBP=4.99   (catch-all)
+  //
+  calculateFee(amount: number): number {
+    const t1Max = this.config.get<number>('app.feeT1Max') ?? 50;
+    const t2Max = this.config.get<number>('app.feeT2Max') ?? 200;
+    const t3Max = this.config.get<number>('app.feeT3Max') ?? 500;
+    const t1    = this.config.get<number>('app.feeT1')    ?? 1.99;
+    const t2    = this.config.get<number>('app.feeT2')    ?? 2.99;
+    const t3    = this.config.get<number>('app.feeT3')    ?? 3.99;
+    const t4    = this.config.get<number>('app.feeT4')    ?? 4.99;
+
+    if (amount <= t1Max) return t1;
+    if (amount <= t2Max) return t2;
+    if (amount <= t3Max) return t3;
+    return t4;
   }
 
   // ── Fetch rates from Open Exchange Rates ──────────────────

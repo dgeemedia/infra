@@ -1,6 +1,6 @@
 // apps/api/src/modules/payouts/payouts.module.ts
-import { Module }        from '@nestjs/common';
-import { BullModule }    from '@nestjs/bull';
+import { Module }     from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
 
 import { ComplianceModule }    from '../compliance/compliance.module';
 import { FxModule }            from '../fx/fx.module';
@@ -15,8 +15,8 @@ import { PayoutQueueProcessor } from '../../queues/payout.queue.processor';
 @Module({
   imports: [
     BullModule.registerQueue({ name: PAYOUT_QUEUE }),
-    FxModule,
     ComplianceModule,
+    FxModule,          // ← required: PayoutsService injects FxService for fee calculation
     PspModule,
     WebhooksModule,
   ],

@@ -17,9 +17,26 @@ export const appConfig = registerAs('app', () => ({
   jwtSecret:    process.env['JWT_SECRET']    ?? 'change_this_in_production',
   jwtExpiresIn: process.env['JWT_EXPIRES_IN'] ?? '7d',
 
-  webhookSecret:       process.env['WEBHOOK_SECRET']           ?? 'change_this',
-  webhookMaxRetries:   parseInt(process.env['WEBHOOK_MAX_RETRIES']   ?? '5',    10),
+  webhookSecret:       process.env['WEBHOOK_SECRET']            ?? 'change_this',
+  webhookMaxRetries:   parseInt(process.env['WEBHOOK_MAX_RETRIES']    ?? '5',    10),
   webhookRetryDelayMs: parseInt(process.env['WEBHOOK_RETRY_DELAY_MS'] ?? '5000', 10),
+
+  // ── Platform fee tiers (GBP) ─────────────────────────────
+  // Charged as a transparent service fee on top of the FX conversion.
+  // Change these in .env without a code deploy.
+  //
+  // Tier structure:
+  //   sendAmount ≤ feeT1Max  → feeT1
+  //   sendAmount ≤ feeT2Max  → feeT2
+  //   sendAmount ≤ feeT3Max  → feeT3
+  //   sendAmount >  feeT3Max → feeT4
+  feeT1Max: parseFloat(process.env['FEE_TIER1_MAX_GBP'] ?? '50'),
+  feeT2Max: parseFloat(process.env['FEE_TIER2_MAX_GBP'] ?? '200'),
+  feeT3Max: parseFloat(process.env['FEE_TIER3_MAX_GBP'] ?? '500'),
+  feeT1:    parseFloat(process.env['FEE_TIER1_GBP']     ?? '1.99'),
+  feeT2:    parseFloat(process.env['FEE_TIER2_GBP']     ?? '2.99'),
+  feeT3:    parseFloat(process.env['FEE_TIER3_GBP']     ?? '3.99'),
+  feeT4:    parseFloat(process.env['FEE_TIER4_GBP']     ?? '4.99'),
 }));
 
 export const databaseConfig = registerAs('database', () => ({
@@ -50,10 +67,7 @@ export const fxConfig = registerAs('fx', () => ({
 }));
 
 export const complianceConfig = registerAs('compliance', () => ({
-  complyAdvantage: {
-    apiKey:  process.env['COMPLY_ADVANTAGE_API_KEY'],
-    baseUrl: process.env['COMPLY_ADVANTAGE_BASE_URL'] ?? 'https://api.complyadvantage.com',
-  },
+  // ComplyAdvantage removed — using OpenSanctions only (free, covers OFAC/UN/EU/UK HMT)
   openSanctions: {
     apiKey: process.env['OPEN_SANCTIONS_API_KEY'],
   },

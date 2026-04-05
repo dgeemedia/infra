@@ -1,0 +1,65 @@
+# ── API Keys ──────────────────────────────────────────────────
+API_KEY_PREFIX=el_live_
+API_KEY_SANDBOX_PREFIX=el_test_
+
+# ── PSP: Flutterwave (PRIMARY) ────────────────────────────────
+FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-your-key-here
+FLUTTERWAVE_BASE_URL=https://api.flutterwave.com/v3
+
+# ── PSP: Bankly (FAILOVER) ────────────────────────────────────
+BANKLY_CLIENT_ID=your_bankly_client_id
+BANKLY_CLIENT_SECRET=your_bankly_client_secret
+BANKLY_BASE_URL=https://api.bankly.ng
+BANKLY_WALLET_ACCOUNT=your_funded_wallet_account
+
+# ── FX Rates ──────────────────────────────────────────────────
+# Used for GET /v1/rates (quote endpoint) only.
+# Partners bring their own FX — Elorge does not convert on their behalf.
+OPEN_EXCHANGE_RATES_APP_ID=your_app_id_from_openexchangerates_org
+FX_CACHE_TTL_SECONDS=300
+
+# ── Platform Fee Tiers (GBP) ──────────────────────────────────
+# Change these without a code deploy — just update and restart.
+# Tier 1: sendAmount ≤ FEE_TIER1_MAX_GBP  → FEE_TIER1_GBP
+# Tier 2: sendAmount ≤ FEE_TIER2_MAX_GBP  → FEE_TIER2_GBP
+# Tier 3: sendAmount ≤ FEE_TIER3_MAX_GBP  → FEE_TIER3_GBP
+# Tier 4: sendAmount >  FEE_TIER3_MAX_GBP → FEE_TIER4_GBP
+FEE_TIER1_MAX_GBP=50
+FEE_TIER2_MAX_GBP=200
+FEE_TIER3_MAX_GBP=500
+FEE_TIER1_GBP=1.99
+FEE_TIER2_GBP=2.99
+FEE_TIER3_GBP=3.99
+FEE_TIER4_GBP=4.99
+
+# ── Compliance ────────────────────────────────────────────────
+# OpenSanctions only — covers OFAC, UN, EU, UK HMT. Free tier = 10k req/day.
+# Leave blank in dev to skip screening entirely.
+OPEN_SANCTIONS_API_KEY=your_open_sanctions_key
+
+# ── Webhooks ──────────────────────────────────────────────────
+WEBHOOK_SECRET=change_this_in_production
+WEBHOOK_MAX_RETRIES=5
+WEBHOOK_RETRY_DELAY_MS=5000
+
+# ── Platform ──────────────────────────────────────────────────
+PLATFORM_NAME=Elorge Payout Platform
+PLATFORM_EMAIL=platform@elorge.com
+SUPPORT_EMAIL=support@elorge.com
+MAX_PAYOUT_AMOUNT_GBP=5000
+MIN_PAYOUT_AMOUNT_GBP=1
+
+# ── JWT ───────────────────────────────────────────────────────
+JWT_SECRET=change_this_in_production_use_a_long_random_string
+JWT_EXPIRES_IN=7d
+
+# ── Database ──────────────────────────────────────────────────
+DATABASE_URL=postgresql://user:password@host:5432/elorge
+DIRECT_URL=postgresql://user:password@host:5432/elorge
+
+# ── Redis ─────────────────────────────────────────────────────
+REDIS_URL=redis://localhost:6379
+
+# ── Server ────────────────────────────────────────────────────
+PORT=3001
+NODE_ENV=development

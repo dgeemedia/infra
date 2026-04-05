@@ -1,29 +1,43 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+// apps/api/src/modules/partners/partners.controller.ts
+import {
+  Body, Controller, Get, Param, Patch, Post, HttpCode, HttpStatus,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsIn, IsString, Length } from 'class-validator';
+import {
+  IsEmail, IsEnum, IsIn, IsString, Length, MinLength,
+} from 'class-validator';
 
-import { Public }           from '../../common/decorators/public.decorator';
-import { PartnersService }  from './partners.service';
+import { Public }            from '../../common/decorators/public.decorator';
+import { CurrentPartner }    from '../../common/decorators/current-partner.decorator';
+import { PartnersService }   from './partners.service';
+import type { AuthenticatedPartner } from '@elorge/types';
+
+// ── DTOs ──────────────────────────────────────────────────────
 
 class CreatePartnerDto {
-  @IsString() @Length(2, 100) name!:    string;
-  @IsEmail()                  email!:   string;
-  @IsString() @Length(2, 2)   country!: string;
+  @IsString() @Length(2, 100) name!:     string;
+  @IsEmail()                  email!:    string;
+  @IsString() @Length(2, 2)   country!:  string;
+  @IsString() @MinLength(8)   password!: string;  // ← set on creation now
 }
 
 class GenerateKeyDto {
-  @IsString() @Length(2, 50)  label!:       string;
-  @IsIn(['live', 'sandbox'])   environment!: 'live' | 'sandbox';
+  @IsString() @Length(2, 50) label!:       string;
+  @IsIn(['live', 'sandbox'])  environment!: 'live' | 'sandbox';
 }
+
+// ── Controller ────────────────────────────────────────────────
 
 @ApiTags('Partners')
 @Controller('v1/partners')
 export class PartnersController {
   constructor(private readonly partnersService: PartnersService) {}
 
+  // ── Create partner (admin-only in production, guarded by AdminGuard at
+  //    the admin module level — this one remains @Public for seeding/dev) ──
   @Post()
-  @Public()   // TODO: protect with admin JWT in production
-  @ApiOperation({ summary: 'Create a new partner (admin)' })
+  @Public()
+  @ApiOperation({ summary: 'Create a new partner' })
   async create(@Body() dto: CreatePartnerDto) {
     return this.partnersService.create(dto);
   }
@@ -37,7 +51,7 @@ export class PartnersController {
 
   @Get(':id')
   @Public()
-  @ApiOperation({ summary: 'Get partner by ID (admin)' })
+  @ApiOperation({ summary: 'Get partner by ID' })
   async findOne(@Param('id') id: string) {
     return this.partnersService.findById(id);
   }
@@ -67,5 +81,16 @@ export class PartnersController {
     @Param('keyId') keyId: string,
   ) {
     return this.partnersService.revokeApiKey(keyId, id);
+  }
+
+  // ── Self-suspend (partner suspends their own account) ─────────
+  //    Uses ApiKeyGuard (dashboard JWT) — NOT AdminGuard.
+  //    Only the account owner can suspend themselves.
+  //    Only an admin can reactivate — no self-reactivate endpoint exists.
+  @Patch('me/suspend')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Partner suspends their own account' })
+  async selfSuspend(@CurrentPartner() partner: AuthenticatedPartner) {
+    return this.partnersService.selfSuspend(partner.id);
   }
 }

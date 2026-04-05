@@ -7,13 +7,13 @@ import {
   useAdminPartners, useSuspendPartner, useActivatePartner,
 } from '@/hooks/useAdmin';
 import { formatNaira, formatDate, formatNumber, cn } from '@/lib/utils';
-import { Users, ShieldOff, CheckCircle2, Loader2, AlertTriangle } from 'lucide-react';
+import { Users, CheckCircle2, Loader2, AlertTriangle, Plus } from 'lucide-react';
 
 function PartnersContent() {
-  const { data: partners, isLoading }  = useAdminPartners();
+  const { data: partners, isLoading } = useAdminPartners();
   const suspendMutation  = useSuspendPartner();
   const activateMutation = useActivatePartner();
-  const [confirmId, setConfirmId]      = useState<string | null>(null);
+  const [confirmId,     setConfirmId]     = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<'suspend' | 'activate' | null>(null);
 
   function openConfirm(id: string, action: 'suspend' | 'activate') {
@@ -34,11 +34,22 @@ function PartnersContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">All Partners</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Manage partner accounts across the Elorge platform
-        </p>
+
+      {/* Header with Add Partner button */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">All Partners</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Manage partner accounts across the Elorge platform
+          </p>
+        </div>
+        <a
+          href="/admin/partners/new"
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors shrink-0"
+        >
+          <Plus className="h-4 w-4" />
+          Add Partner
+        </a>
       </div>
 
       <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -83,9 +94,11 @@ function PartnersContent() {
                       'rounded-full px-2 py-0.5 text-xs font-medium',
                       partner.status === 'ACTIVE'
                         ? 'bg-green-100 text-green-700'
+                        : partner.status === 'PENDING_REVIEW'
+                        ? 'bg-yellow-100 text-yellow-700'
                         : 'bg-red-100 text-red-700',
                     )}>
-                      {partner.status}
+                      {partner.status === 'PENDING_REVIEW' ? 'Pending' : partner.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center text-muted-foreground">
@@ -108,7 +121,7 @@ function PartnersContent() {
                       >
                         View
                       </a>
-                      {partner.status === 'ACTIVE' ? (
+                      {partner.status !== 'SUSPENDED' ? (
                         <button
                           onClick={() => openConfirm(partner.id, 'suspend')}
                           className="rounded-lg px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors"
@@ -127,6 +140,15 @@ function PartnersContent() {
                   </td>
                 </tr>
               ))}
+
+              {!isLoading && (!partners || partners.length === 0) && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    No partners yet.{' '}
+                    <a href="/admin/partners/new" className="text-primary hover:underline">Add the first one.</a>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -142,7 +164,7 @@ function PartnersContent() {
             )}>
               {confirmAction === 'suspend'
                 ? <AlertTriangle className="h-6 w-6 text-destructive" />
-                : <CheckCircle2 className="h-6 w-6 text-green-600" />
+                : <CheckCircle2  className="h-6 w-6 text-green-600" />
               }
             </div>
             <h2 className="mt-4 text-center text-base font-semibold text-foreground">
@@ -166,7 +188,9 @@ function PartnersContent() {
                 disabled={suspendMutation.isPending || activateMutation.isPending}
                 className={cn(
                   'flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-colors',
-                  confirmAction === 'suspend' ? 'bg-destructive hover:bg-destructive/90' : 'bg-green-600 hover:bg-green-700',
+                  confirmAction === 'suspend'
+                    ? 'bg-destructive hover:bg-destructive/90'
+                    : 'bg-green-600 hover:bg-green-700',
                 )}
               >
                 {(suspendMutation.isPending || activateMutation.isPending) && (
