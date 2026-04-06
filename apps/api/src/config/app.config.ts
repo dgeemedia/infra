@@ -22,14 +22,6 @@ export const appConfig = registerAs('app', () => ({
   webhookRetryDelayMs: parseInt(process.env['WEBHOOK_RETRY_DELAY_MS'] ?? '5000', 10),
 
   // ── Platform fee tiers (GBP) ─────────────────────────────
-  // Charged as a transparent service fee on top of the FX conversion.
-  // Change these in .env without a code deploy.
-  //
-  // Tier structure:
-  //   sendAmount ≤ feeT1Max  → feeT1
-  //   sendAmount ≤ feeT2Max  → feeT2
-  //   sendAmount ≤ feeT3Max  → feeT3
-  //   sendAmount >  feeT3Max → feeT4
   feeT1Max: parseFloat(process.env['FEE_TIER1_MAX_GBP'] ?? '50'),
   feeT2Max: parseFloat(process.env['FEE_TIER2_MAX_GBP'] ?? '200'),
   feeT3Max: parseFloat(process.env['FEE_TIER3_MAX_GBP'] ?? '500'),
@@ -37,6 +29,11 @@ export const appConfig = registerAs('app', () => ({
   feeT2:    parseFloat(process.env['FEE_TIER2_GBP']     ?? '2.99'),
   feeT3:    parseFloat(process.env['FEE_TIER3_GBP']     ?? '3.99'),
   feeT4:    parseFloat(process.env['FEE_TIER4_GBP']     ?? '4.99'),
+
+  // ── Minimum partner balance before payouts are blocked ───
+  // If a partner's balance drops below this threshold (in GBP),
+  // the API rejects new payouts until they top up.
+  minPartnerBalanceGbp: parseFloat(process.env['MIN_PARTNER_BALANCE_GBP'] ?? '0'),
 }));
 
 export const databaseConfig = registerAs('database', () => ({
@@ -67,8 +64,52 @@ export const fxConfig = registerAs('fx', () => ({
 }));
 
 export const complianceConfig = registerAs('compliance', () => ({
-  // ComplyAdvantage removed — using OpenSanctions only (free, covers OFAC/UN/EU/UK HMT)
   openSanctions: {
     apiKey: process.env['OPEN_SANCTIONS_API_KEY'],
+  },
+}));
+
+// ── Receiving account config (your payment details) ──────────
+// Used to populate the "How to pay your invoice" section in
+// partner-facing invoice emails. Swap provider any time by
+// updating .env — no code change needed.
+//
+// RECEIVING_PROVIDER  — free-text name shown to partners
+//                       e.g. "Wise", "Payoneer", "Airwallex"
+// Each currency block has: ACCOUNT_NAME, ACCOUNT_NUMBER,
+// ROUTING (sort code / ACH routing / IBAN etc), SWIFT_BIC.
+// Add or remove currency blocks as your provider supports them.
+export const receivingAccountConfig = registerAs('receivingAccount', () => ({
+  provider: process.env['RECEIVING_PROVIDER'] ?? 'Wise',
+
+  gbp: {
+    accountName:  process.env['RECEIVING_GBP_ACCOUNT_NAME']  ?? '',
+    accountNumber:process.env['RECEIVING_GBP_ACCOUNT_NUMBER']?? '',
+    sortCode:     process.env['RECEIVING_GBP_SORT_CODE']     ?? '',
+    swiftBic:     process.env['RECEIVING_GBP_SWIFT_BIC']     ?? '',
+    iban:         process.env['RECEIVING_GBP_IBAN']          ?? '',
+  },
+
+  usd: {
+    accountName:    process.env['RECEIVING_USD_ACCOUNT_NAME']     ?? '',
+    accountNumber:  process.env['RECEIVING_USD_ACCOUNT_NUMBER']   ?? '',
+    achRouting:     process.env['RECEIVING_USD_ACH_ROUTING']      ?? '',
+    wireRouting:    process.env['RECEIVING_USD_WIRE_ROUTING']      ?? '',
+    swiftBic:       process.env['RECEIVING_USD_SWIFT_BIC']        ?? '',
+    // Note: wire routing differs from ACH on Wise — set both
+  },
+
+  eur: {
+    accountName:   process.env['RECEIVING_EUR_ACCOUNT_NAME']  ?? '',
+    iban:          process.env['RECEIVING_EUR_IBAN']          ?? '',
+    swiftBic:      process.env['RECEIVING_EUR_SWIFT_BIC']     ?? '',
+  },
+
+  cad: {
+    accountName:       process.env['RECEIVING_CAD_ACCOUNT_NAME']         ?? '',
+    accountNumber:     process.env['RECEIVING_CAD_ACCOUNT_NUMBER']       ?? '',
+    institutionNumber: process.env['RECEIVING_CAD_INSTITUTION_NUMBER']   ?? '',
+    transitNumber:     process.env['RECEIVING_CAD_TRANSIT_NUMBER']       ?? '',
+    swiftBic:          process.env['RECEIVING_CAD_SWIFT_BIC']            ?? '',
   },
 }));

@@ -1,9 +1,15 @@
-// apps/dashboard/src/hooks/useNotifications.ts
 'use client';
 
+// apps/dashboard/src/hooks/useNotifications.ts
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSession } from 'next-auth/react';
 import { api } from '@/lib/api';
+
+// ── Same unwrap pattern as useAdmin.ts ────────────────────────
+// TransformInterceptor wraps responses as { success, data, timestamp }.
+// res.data.data is the actual payload.
+function unwrap<T>(res: { data: { success: boolean; data: T; timestamp: string } }): T {
+  return res.data.data;
+}
 
 interface Notification {
   id:        string;
@@ -21,20 +27,15 @@ interface NotificationsResponse {
 }
 
 export function useNotifications() {
-  const { data: session } = useSession();
-  const isAdmin = (session?.user as { role?: string } | undefined)?.role === 'ADMIN';
-
   return useQuery({
     queryKey: ['notifications'],
-    queryFn:  async () => {
-      const { data } = await api.get<{ success: boolean; data: NotificationsResponse }>(
+    queryFn:  async () => unwrap(
+      await api.get<{ success: boolean; data: NotificationsResponse; timestamp: string }>(
         '/v1/notifications',
-      );
-      return data.data;
-    },
-    enabled:         !isAdmin,  // admin has no partner notifications
-    staleTime:       60_000,    // was 30_000
-    refetchInterval: 60_000,    // was 30_000 — halved to reduce Supabase load
+      ),
+    ),
+    staleTime:       60_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -44,7 +45,8 @@ export function useMarkNotificationRead() {
     mutationFn: async (id: string) => {
       await api.patch(`/v1/notifications/${id}/read`);
     },
-    // Optimistic update — flip read=true immediately in the cache
+    // Optimistic update — flip the notification to read immediately
+    // so the UI doesn't wait for a refetch to clear the badge.
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey: ['notifications'] });
       const previous = queryClient.getQueryData<NotificationsResponse>(['notifications']);

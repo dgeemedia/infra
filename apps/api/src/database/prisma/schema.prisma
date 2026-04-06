@@ -1,9 +1,3 @@
-// apps/api/src/database/prisma/schema.prisma
-// ════════════════════════════════════════════════════════════
-//  Elorge Platform — Prisma Database Schema
-//  PostgreSQL 16
-// ════════════════════════════════════════════════════════════
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,9 +8,179 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ── Enums ─────────────────────────────────────────────────────
+model Partner {
+  id                  String               @id @default(uuid())
+  name                String
+  email               String               @unique
+  country             String
+  status              PartnerStatus        @default(PENDING_REVIEW)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  passwordHash        String?
+  role                PartnerRole          @default(PARTNER)
+  balancePence        Int                  @default(0)
+  mustChangePassword  Boolean              @default(false)
+  apiKeys             ApiKey[]
+  auditLogs           AuditLog[]
+  balanceTransactions BalanceTransaction[]
+  notifications       Notification[]
+  payouts             Payout[]
+  webhookConfigs      WebhookConfig[]
 
-// ★ NEW
+  @@map("partners")
+}
+
+model ApiKey {
+  id          String            @id @default(uuid())
+  partnerId   String
+  label       String
+  keyHash     String            @unique
+  keyPreview  String
+  environment ApiKeyEnvironment @default(live)
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime          @default(now())
+  partner     Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+model Payout {
+  id                  String               @id @default(uuid())
+  partnerId           String
+  partnerReference    String
+  sendAmount          Decimal              @db.Decimal(12, 2)
+  sendCurrency        String
+  nairaAmount         Decimal              @db.Decimal(14, 2)
+  exchangeRate        Decimal              @db.Decimal(10, 4)
+  fee                 Decimal              @db.Decimal(10, 2)
+  status              PayoutStatus         @default(PENDING)
+  pspReference        String?
+  failureReason       String?
+  bankSessionId       String?
+  narration           String?
+  deliveredAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  balanceTransactions BalanceTransaction[]
+  partner             Partner              @relation(fields: [partnerId], references: [id])
+  recipient           Recipient?
+  webhookDeliveries   WebhookDelivery[]
+
+  @@unique([partnerId, partnerReference])
+  @@index([partnerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payouts")
+}
+
+model Recipient {
+  id            String   @id @default(uuid())
+  payoutId      String   @unique
+  fullName      String
+  bankCode      String
+  bankName      String
+  accountNumber String
+  phone         String?
+  createdAt     DateTime @default(now())
+  payout        Payout   @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  @@index([accountNumber])
+  @@map("recipients")
+}
+
+model WebhookConfig {
+  id                String            @id @default(uuid())
+  partnerId         String
+  url               String
+  events            String[]
+  isActive          Boolean           @default(true)
+  secret            String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  partner           Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  webhookDeliveries WebhookDelivery[]
+
+  @@index([partnerId])
+  @@map("webhook_configs")
+}
+
+model WebhookDelivery {
+  id           String                @id @default(uuid())
+  payoutId     String
+  webhookId    String
+  event        String
+  payload      Json
+  responseCode Int?
+  responseBody String?
+  attempt      Int                   @default(1)
+  status       WebhookDeliveryStatus @default(PENDING)
+  nextRetryAt  DateTime?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  payout       Payout                @relation(fields: [payoutId], references: [id])
+  webhook      WebhookConfig         @relation(fields: [webhookId], references: [id])
+
+  @@index([payoutId])
+  @@index([webhookId])
+  @@index([status, nextRetryAt])
+  @@map("webhook_deliveries")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  partnerId  String?
+  entityType String
+  entityId   String
+  action     AuditAction
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+  partner    Partner?    @relation(fields: [partnerId], references: [id])
+
+  @@index([partnerId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  partnerId String
+  type      NotificationType
+  title     String
+  body      String
+  read      Boolean          @default(false)
+  metadata  Json?
+  createdAt DateTime         @default(now())
+  partner   Partner          @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  @@index([partnerId, read])
+  @@index([partnerId, createdAt])
+  @@map("notifications")
+}
+
+model BalanceTransaction {
+  id                String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
+  partnerId         String
+  type              BalanceTransactionType
+  amountPence       Int
+  balanceAfterPence Int
+  description       String
+  payoutId          String?
+  createdAt         DateTime               @default(now())
+  partner           Partner                @relation(fields: [partnerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  payout            Payout?                @relation(fields: [payoutId], references: [id], onUpdate: NoAction)
+
+  @@index([partnerId])
+  @@index([partnerId, type])
+  @@index([createdAt])
+  @@map("balance_transactions")
+}
+
 enum PartnerRole {
   ADMIN
   PARTNER
@@ -71,169 +235,8 @@ enum NotificationType {
   SYSTEM
 }
 
-// ── Partner ───────────────────────────────────────────────────
-model Partner {
-  id           String        @id @default(uuid())
-  name         String
-  email        String        @unique
-  passwordHash String?                             // ★ NEW — dashboard login
-  role         PartnerRole   @default(PARTNER)     // ★ NEW — ADMIN | PARTNER
-  country      String
-  status       PartnerStatus @default(PENDING_REVIEW)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-
-  // Relations
-  apiKeys        ApiKey[]
-  payouts        Payout[]
-  webhookConfigs WebhookConfig[]
-  auditLogs      AuditLog[]
-  notifications Notification[]
-
-  @@map("partners")
-}
-
-// ── ApiKey ────────────────────────────────────────────────────
-model ApiKey {
-  id          String            @id @default(uuid())
-  partnerId   String
-  label       String
-  keyHash     String            @unique
-  keyPreview  String
-  environment ApiKeyEnvironment @default(live)
-  lastUsedAt  DateTime?
-  revokedAt   DateTime?
-  createdAt   DateTime          @default(now())
-
-  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-
-  @@index([partnerId])
-  @@index([keyHash])
-  @@map("api_keys")
-}
-
-// ── Payout ────────────────────────────────────────────────────
-model Payout {
-  id               String       @id @default(uuid())
-  partnerId        String
-  partnerReference String
-  sendAmount       Decimal      @db.Decimal(12, 2)
-  sendCurrency     String
-  nairaAmount      Decimal      @db.Decimal(14, 2)
-  exchangeRate     Decimal      @db.Decimal(10, 4)
-  fee              Decimal      @db.Decimal(10, 2)
-  status           PayoutStatus @default(PENDING)
-  pspReference     String?
-  failureReason    String?
-  bankSessionId    String?
-  narration        String?
-  deliveredAt      DateTime?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  partner           Partner           @relation(fields: [partnerId], references: [id])
-  recipient         Recipient?
-  webhookDeliveries WebhookDelivery[]
-
-  @@unique([partnerId, partnerReference])
-  @@index([partnerId])
-  @@index([status])
-  @@index([createdAt])
-  @@map("payouts")
-}
-
-// ── Recipient ─────────────────────────────────────────────────
-model Recipient {
-  id            String   @id @default(uuid())
-  payoutId      String   @unique
-  fullName      String
-  bankCode      String
-  bankName      String
-  accountNumber String
-  phone         String?
-  createdAt     DateTime @default(now())
-
-  payout Payout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
-
-  @@index([accountNumber])
-  @@map("recipients")
-}
-
-// ── WebhookConfig ─────────────────────────────────────────────
-model WebhookConfig {
-  id        String   @id @default(uuid())
-  partnerId String
-  url       String
-  events    String[]
-  isActive  Boolean  @default(true)
-  secret    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  partner           Partner           @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  webhookDeliveries WebhookDelivery[]
-
-  @@index([partnerId])
-  @@map("webhook_configs")
-}
-
-// ── WebhookDelivery ───────────────────────────────────────────
-model WebhookDelivery {
-  id           String                @id @default(uuid())
-  payoutId     String
-  webhookId    String
-  event        String
-  payload      Json
-  responseCode Int?
-  responseBody String?
-  attempt      Int                   @default(1)
-  status       WebhookDeliveryStatus @default(PENDING)
-  nextRetryAt  DateTime?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-
-  payout  Payout        @relation(fields: [payoutId],  references: [id])
-  webhook WebhookConfig @relation(fields: [webhookId], references: [id])
-
-  @@index([payoutId])
-  @@index([webhookId])
-  @@index([status, nextRetryAt])
-  @@map("webhook_deliveries")
-}
-
-// ── AuditLog ──────────────────────────────────────────────────
-model AuditLog {
-  id         String      @id @default(uuid())
-  partnerId  String?
-  entityType String
-  entityId   String
-  action     AuditAction
-  metadata   Json?
-  ipAddress  String?
-  userAgent  String?
-  createdAt  DateTime    @default(now())
-
-  partner Partner? @relation(fields: [partnerId], references: [id])
-
-  @@index([partnerId])
-  @@index([entityType, entityId])
-  @@index([createdAt])
-  @@map("audit_logs")
-}
-
-model Notification {
-  id         String           @id @default(uuid())
-  partnerId  String
-  type       NotificationType
-  title      String
-  body       String
-  read       Boolean          @default(false)
-  metadata   Json?            // e.g. { payoutId, webhookId }
-  createdAt  DateTime         @default(now())
-
-  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-
-  @@index([partnerId, read])
-  @@index([partnerId, createdAt])
-  @@map("notifications")
+enum BalanceTransactionType {
+  CREDIT
+  DEBIT
+  REFUND
 }

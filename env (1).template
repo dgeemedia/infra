@@ -1,0 +1,113 @@
+# ════════════════════════════════════════════════════════════
+#  Elorge Platform — Environment Variables Template
+#  Copy to .env and fill in your values.
+#  Never commit .env to source control.
+# ════════════════════════════════════════════════════════════
+
+# ── App ──────────────────────────────────────────────────────
+NODE_ENV=development
+PORT=3001
+PLATFORM_NAME="Elorge Payout Platform"
+PLATFORM_EMAIL=platform@elorge.com
+SUPPORT_EMAIL=support@elorge.com
+
+# ── Auth ─────────────────────────────────────────────────────
+JWT_SECRET=change_this_to_a_long_random_string
+JWT_EXPIRES_IN=7d
+
+# ── API key prefixes ─────────────────────────────────────────
+API_KEY_PREFIX=el_live_
+API_KEY_SANDBOX_PREFIX=el_test_
+
+# ── Payout limits (GBP) ──────────────────────────────────────
+MIN_PAYOUT_AMOUNT_GBP=1
+MAX_PAYOUT_AMOUNT_GBP=5000
+
+# ── Partner balance ───────────────────────────────────────────
+# Minimum GBP balance a partner must maintain after fee deduction.
+# Set to 0 to only require balance >= fee. Raise to e.g. 50 to
+# require a £50 cushion at all times.
+MIN_PARTNER_BALANCE_GBP=0
+
+# ── Platform fee tiers (GBP) ─────────────────────────────────
+# Tier boundaries (sendAmount in GBP):
+#   ≤ TIER1_MAX  → TIER1 fee
+#   ≤ TIER2_MAX  → TIER2 fee
+#   ≤ TIER3_MAX  → TIER3 fee
+#   >  TIER3_MAX → TIER4 fee
+FEE_TIER1_MAX_GBP=50
+FEE_TIER2_MAX_GBP=200
+FEE_TIER3_MAX_GBP=500
+FEE_TIER1_GBP=1.99
+FEE_TIER2_GBP=2.99
+FEE_TIER3_GBP=3.99
+FEE_TIER4_GBP=4.99
+
+# ── Webhooks ──────────────────────────────────────────────────
+WEBHOOK_SECRET=change_this
+WEBHOOK_MAX_RETRIES=5
+WEBHOOK_RETRY_DELAY_MS=5000
+
+# ── Database ──────────────────────────────────────────────────
+DATABASE_URL=postgresql://user:password@localhost:5432/elorge
+DIRECT_URL=postgresql://user:password@localhost:5432/elorge
+
+# ── Redis ─────────────────────────────────────────────────────
+REDIS_URL=redis://localhost:6379
+FX_CACHE_TTL_SECONDS=300
+
+# ── PSP — Flutterwave ─────────────────────────────────────────
+FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-xxxxxxxxxxxxxxxxxxxx
+FLUTTERWAVE_BASE_URL=https://api.flutterwave.com/v3
+
+# ── PSP — Bankly (if used) ────────────────────────────────────
+BANKLY_CLIENT_ID=
+BANKLY_CLIENT_SECRET=
+BANKLY_BASE_URL=https://api.bankly.ng
+BANKLY_WALLET_ACCOUNT=
+
+# ── FX ───────────────────────────────────────────────────────
+OPEN_EXCHANGE_RATES_APP_ID=
+
+# ── Compliance ───────────────────────────────────────────────
+OPEN_SANCTIONS_API_KEY=
+
+# ════════════════════════════════════════════════════════════
+#  YOUR RECEIVING ACCOUNT DETAILS
+#  These are shown to partners in invoice emails so they know
+#  where to send their prepayment.
+#
+#  RECEIVING_PROVIDER — the service name shown to partners
+#  e.g. Wise, Payoneer, Airwallex, Mercury, Relay
+#  Swap provider any time by updating these vars — no code change.
+# ════════════════════════════════════════════════════════════
+
+RECEIVING_PROVIDER=Wise
+
+# ── GBP (UK partners, default) ───────────────────────────────
+RECEIVING_GBP_ACCOUNT_NAME=Elorge Technologies Limited
+RECEIVING_GBP_ACCOUNT_NUMBER=
+RECEIVING_GBP_SORT_CODE=
+RECEIVING_GBP_SWIFT_BIC=
+RECEIVING_GBP_IBAN=
+
+# ── USD (US partners — Wise gives you a US virtual account) ──
+# No US entity needed. Wise provides ACH + wire details.
+# ACH routing ≠ wire routing on Wise — check your Wise dashboard.
+RECEIVING_USD_ACCOUNT_NAME=Elorge Technologies Limited
+RECEIVING_USD_ACCOUNT_NUMBER=
+RECEIVING_USD_ACH_ROUTING=
+RECEIVING_USD_WIRE_ROUTING=
+RECEIVING_USD_SWIFT_BIC=
+
+# ── EUR (European partners) ───────────────────────────────────
+RECEIVING_EUR_ACCOUNT_NAME=Elorge Technologies Limited
+RECEIVING_EUR_IBAN=
+RECEIVING_EUR_SWIFT_BIC=
+
+# ── CAD (Canadian partners) ───────────────────────────────────
+RECEIVING_CAD_ACCOUNT_NAME=Elorge Technologies Limited
+RECEIVING_CAD_ACCOUNT_NUMBER=
+RECEIVING_CAD_INSTITUTION_NUMBER=
+RECEIVING_CAD_TRANSIT_NUMBER=
+RECEIVING_CAD_SWIFT_BIC=

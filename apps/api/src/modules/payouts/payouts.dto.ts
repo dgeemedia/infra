@@ -162,7 +162,7 @@ export class PayoutQueryDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
-  @Max(100)
+  @Max(500)
   @Type(() => Number)
   pageSize?: number = 20;
 

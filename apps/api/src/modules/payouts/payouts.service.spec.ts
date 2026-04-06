@@ -4,20 +4,29 @@
  * Run: cd apps/api && npm run test
  */
 
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  NotFoundException,
+} from '@nestjs/common';
 import { getQueueToken }       from '@nestjs/bull';
+import { ConfigService }       from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { PayoutStatus, Currency } from '@elorge/constants';
 
 import { ComplianceService } from '../compliance/compliance.service';
+import { FxService }         from '../fx/fx.service';
 import { PspFactory }        from '../psp/psp.factory';
+import { PrismaService }     from '../../database/prisma.service';
 import { PAYOUT_QUEUE }      from '../../queues/payout.queue';
 import { PayoutsRepository } from './payouts.repository';
 import { PayoutsService }    from './payouts.service';
 import { CreatePayoutDto }   from './payouts.dto';
 
 // ── Mocks ─────────────────────────────────────────────────────
+
 const mockRepo = {
   create:          jest.fn(),
   findById:        jest.fn(),
@@ -46,20 +55,44 @@ const mockQueue = {
   add: jest.fn(),
 };
 
+// FxService: calculateFee is called by the service; mock it to return a fixed fee.
+const mockFxService = {
+  calculateFee: jest.fn(() => 2.99), // default: tier-2 fee for £100
+  getRate:      jest.fn(),
+  buildQuote:   jest.fn(),
+  convertToNaira: jest.fn(),
+};
+
+// ConfigService: minPartnerBalanceGbp defaults to 0 in tests.
+const mockConfigService = {
+  get: jest.fn((key: string) => {
+    if (key === 'app.minPartnerBalanceGbp') return 0;
+    return undefined;
+  }),
+};
+
+// PrismaService: stubs for partner lookup and $transaction.
+const mockPrismaService = {
+  partner: {
+    findUnique: jest.fn(),
+    update:     jest.fn(),
+  },
+  balanceTransaction: {
+    create: jest.fn(),
+  },
+  $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
+};
+
 // ── Test Data ─────────────────────────────────────────────────
+
 const PARTNER_ID = 'partner_test_001';
 
-/**
- * Valid DTO — transparent fee model.
- * Partner provides nairaAmount directly.
- * No exchangeRate required (informational only).
- */
 const validDto: CreatePayoutDto = {
   partnerReference: 'FP_TXN_TEST_001',
   sendAmount:       100,
   sendCurrency:     Currency.GBP,
-  nairaAmount:      205000,          // ← partner calculated this themselves
-  exchangeRate:     2050,            // ← informational only
+  nairaAmount:      205000,
+  exchangeRate:     2050,
   recipient: {
     fullName:      'Test Recipient',
     bankCode:      '058',            // GTBank — valid
@@ -78,13 +111,17 @@ const mockPayoutRecord = {
   partnerReference: 'FP_TXN_TEST_001',
   sendAmount:       100,
   sendCurrency:     'GBP',
-  nairaAmount:      205000,   // exact partner-provided amount
-  exchangeRate:     2050,     // informational
-  fee:              0.35,     // Elorge platform fee in GBP
+  nairaAmount:      205000,
+  exchangeRate:     2050,
+  fee:              2.99,   // stored as Decimal in DB; Number() is used in service
   status:           'PENDING',
   narration:        'Test payout',
   createdAt:        new Date(),
   updatedAt:        new Date(),
+  deliveredAt:      null,
+  pspReference:     null,
+  failureReason:    null,
+  bankSessionId:    null,
   recipient: {
     fullName:      'Test Recipient',
     bankCode:      '058',
@@ -94,7 +131,14 @@ const mockPayoutRecord = {
   },
 };
 
+// Partner with enough balance to cover the fee (fee = £2.99 → 299 pence)
+const mockPartner = {
+  balancePence: 10000, // £100.00
+  status:       'ACTIVE',
+};
+
 // ── Tests ─────────────────────────────────────────────────────
+
 describe('PayoutsService — Transparent Fee Model', () => {
   let service: PayoutsService;
 
@@ -104,19 +148,24 @@ describe('PayoutsService — Transparent Fee Model', () => {
         PayoutsService,
         { provide: PayoutsRepository,           useValue: mockRepo },
         { provide: ComplianceService,           useValue: mockCompliance },
+        { provide: FxService,                   useValue: mockFxService },
         { provide: PspFactory,                  useValue: mockPspFactory },
+        { provide: PrismaService,               useValue: mockPrismaService },
+        { provide: ConfigService,               useValue: mockConfigService },
         { provide: getQueueToken(PAYOUT_QUEUE), useValue: mockQueue },
-        // ✅ No FxService — transparent fee model doesn't use it
       ],
     }).compile();
 
     service = module.get<PayoutsService>(PayoutsService);
 
-    // Happy path defaults
+    // Happy-path defaults
     mockRepo.findByReference.mockResolvedValue(null);
     mockCompliance.screenRecipient.mockResolvedValue({ passed: true, flagged: false });
     mockRepo.create.mockResolvedValue(mockPayoutRecord);
+    mockRepo.updateStatus.mockResolvedValue(mockPayoutRecord);
     mockQueue.add.mockResolvedValue({ id: 'job_001' });
+    mockPrismaService.partner.findUnique.mockResolvedValue(mockPartner);
+    mockPrismaService.$transaction.mockResolvedValue([{}, {}]);
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -124,15 +173,14 @@ describe('PayoutsService — Transparent Fee Model', () => {
   // ── create() ────────────────────────────────────────────────
   describe('create()', () => {
 
-    it('creates payout using partner-provided nairaAmount (no FX calculation)', async () => {
+    it('creates payout using partner-provided nairaAmount (no server-side FX)', async () => {
       const result = await service.create(PARTNER_ID, validDto);
 
-      // Should NOT call any FX service
       expect(mockRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          nairaAmount:  205000,   // ← exact partner amount, no FX applied
-          exchangeRate: 2050,     // ← informational, stored as-is
-          fee:          0.35,     // ← Elorge platform fee only
+          nairaAmount:  205000,  // exact partner amount, no FX applied
+          exchangeRate: 2050,    // informational, stored as-is
+          fee:          2.99,    // Elorge platform fee
         }),
       );
 
@@ -147,7 +195,7 @@ describe('PayoutsService — Transparent Fee Model', () => {
         partnerReference: 'FP_TXN_TEST_001',
         status:           'PENDING',
         nairaAmount:      205000,
-        fee:              0.35,
+        fee:              2.99,
       });
     });
 
@@ -173,10 +221,29 @@ describe('PayoutsService — Transparent Fee Model', () => {
       await expect(service.create(PARTNER_ID, validDto)).rejects.toThrow(ConflictException);
     });
 
+    it('throws 402 HttpException when partner balance is insufficient', async () => {
+      // fee = 2.99 → 299 pence; partner only has 100 pence
+      mockPrismaService.partner.findUnique.mockResolvedValue({
+        balancePence: 100,
+        status:       'ACTIVE',
+      });
+
+      await expect(service.create(PARTNER_ID, validDto)).rejects.toThrow(HttpException);
+
+      try {
+        await service.create(PARTNER_ID, validDto);
+      } catch (err) {
+        expect((err as HttpException).getStatus()).toBe(402);
+        expect((err as HttpException).getResponse()).toMatchObject({
+          code: 'INSUFFICIENT_BALANCE',
+        });
+      }
+    });
+
     it('flags payout and does NOT queue when sanctions match', async () => {
       mockCompliance.screenRecipient.mockResolvedValue({
-        passed:      false,
-        flagged:     true,
+        passed:       false,
+        flagged:      true,
         matchDetails: 'Sanctions list match: Bad Actor (score: 0.92)',
       });
 
@@ -206,14 +273,20 @@ describe('PayoutsService — Transparent Fee Model', () => {
       expect(callOrder.indexOf('compliance')).toBeLessThan(callOrder.indexOf('repo.create'));
     });
 
+    it('debits partner balance after successful payout creation', async () => {
+      await service.create(PARTNER_ID, validDto);
+
+      // $transaction is called with the debit + ledger entry
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
+    });
+
   });
 
   // ── dispatch() ──────────────────────────────────────────────
   describe('dispatch()', () => {
 
-    it('delivers exact nairaAmount via PSP (Flutterwave primary)', async () => {
+    it('delivers exact nairaAmount via PSP', async () => {
       mockRepo.findById.mockResolvedValue(mockPayoutRecord);
-      mockRepo.updateStatus.mockResolvedValue({ ...mockPayoutRecord, status: 'DELIVERED' });
       mockPspAdapter.transfer.mockResolvedValue({
         success:      true,
         pspReference: 'FLW_REF_001',
@@ -223,11 +296,10 @@ describe('PayoutsService — Transparent Fee Model', () => {
 
       await service.dispatch('payout_abc123');
 
-      // PSP receives the exact nairaAmount the partner specified
       expect(mockPspAdapter.transfer).toHaveBeenCalledWith(
         expect.objectContaining({
           reference:     'payout_abc123',
-          amount:        205000,        // ← partner's exact NGN amount
+          amount:        205000,         // partner's exact NGN amount
           bankCode:      '058',
           accountNumber: '0123456789',
         }),
@@ -242,7 +314,6 @@ describe('PayoutsService — Transparent Fee Model', () => {
 
     it('marks FAILED and throws when PSP returns failure', async () => {
       mockRepo.findById.mockResolvedValue(mockPayoutRecord);
-      mockRepo.updateStatus.mockResolvedValue(mockPayoutRecord);
       mockPspAdapter.transfer.mockResolvedValue({
         success:      false,
         pspReference: 'FLW_REF_002',
@@ -256,6 +327,18 @@ describe('PayoutsService — Transparent Fee Model', () => {
         PayoutStatus.FAILED,
         expect.objectContaining({ failureReason: 'Account not found' }),
       );
+    });
+
+    it('refunds fee to partner on PSP failure', async () => {
+      mockRepo.findById.mockResolvedValue(mockPayoutRecord); // fee: 2.99 → 299 pence
+      mockPspAdapter.transfer.mockResolvedValue({
+        success: false, status: 'failed', message: 'Bank unreachable',
+      });
+
+      try { await service.dispatch('payout_abc123'); } catch { /* expected */ }
+
+      // $transaction called to issue the REFUND ledger entry
+      expect(mockPrismaService.$transaction).toHaveBeenCalled();
     });
 
     it('skips if payout not found', async () => {
@@ -279,7 +362,7 @@ describe('PayoutsService — Transparent Fee Model', () => {
     it('returns nairaAmount exactly as stored', async () => {
       mockRepo.findById.mockResolvedValue(mockPayoutRecord);
       const result = await service.getStatus('payout_abc123', PARTNER_ID);
-      expect(result.nairaAmount).toBe(205000);  // ← partner's original amount
+      expect(result.nairaAmount).toBe(205000);
     });
 
     it('throws NotFoundException for unknown payout', async () => {
@@ -287,7 +370,7 @@ describe('PayoutsService — Transparent Fee Model', () => {
       await expect(service.getStatus('bad_id', PARTNER_ID)).rejects.toThrow(NotFoundException);
     });
 
-    it('throws NotFoundException for different partner\'s payout', async () => {
+    it("throws NotFoundException for a different partner's payout", async () => {
       mockRepo.findById.mockResolvedValue({ ...mockPayoutRecord, partnerId: 'other_partner' });
       await expect(service.getStatus('payout_abc123', PARTNER_ID)).rejects.toThrow(NotFoundException);
     });
@@ -304,8 +387,8 @@ describe('PayoutsService — Transparent Fee Model', () => {
 
       expect(result.total).toBe(1);
       expect(result.data[0]).toMatchObject({
-        nairaAmount: 205000,   // partner's amount preserved
-        fee:         0.35,     // Elorge platform fee in GBP
+        nairaAmount: 205000,  // partner's amount preserved
+        fee:         2.99,    // Elorge platform fee
       });
     });
 

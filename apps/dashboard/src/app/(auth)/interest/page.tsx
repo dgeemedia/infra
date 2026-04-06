@@ -18,12 +18,14 @@ const COUNTRIES = [
   { code: 'ZA', label: 'South Africa 🇿🇦'    },
 ];
 
+// USD-denominated ranges — universally understood across all partner countries.
+// The estimatedVolume field is stored as a free string so no schema change is needed.
 const VOLUMES = [
-  'Under £10k/month',
-  '£10k – £50k/month',
-  '£50k – £200k/month',
-  '£200k – £1m/month',
-  'Over £1m/month',
+  'Under $10k/month',
+  '$10k – $50k/month',
+  '$50k – $200k/month',
+  '$200k – $1m/month',
+  'Over $1m/month',
   'Not sure yet',
 ];
 
@@ -232,7 +234,7 @@ export default function InterestPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Elorge Technologies Limited ·{' '}
+          © {new Date().getFullYear()} Elorge Technologies Limited •{' '}
           <a href="mailto:support@elorge.com" className="hover:underline">support@elorge.com</a>
         </p>
       </div>

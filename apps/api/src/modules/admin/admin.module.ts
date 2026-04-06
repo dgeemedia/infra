@@ -1,6 +1,7 @@
 // apps/api/src/modules/admin/admin.module.ts
 import { Module }         from '@nestjs/common';
 import { JwtModule }      from '@nestjs/jwt';
+import { HttpModule }     from '@nestjs/axios';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { PrismaModule }    from '../../database/prisma.module';
@@ -10,8 +11,8 @@ import { AdminGuard }      from '../../common/guards/admin.guard';
 
 @Module({
   imports: [
-    // PrismaModule exposes PrismaService for AdminService
     PrismaModule,
+    HttpModule,   // ← required for Flutterwave balance HTTP call
     JwtModule.registerAsync({
       imports:    [ConfigModule],
       inject:     [ConfigService],
@@ -23,5 +24,7 @@ import { AdminGuard }      from '../../common/guards/admin.guard';
   ],
   controllers: [AdminController],
   providers:   [AdminService, AdminGuard],
+  // AdminService is used by PayoutsService indirectly via PrismaService,
+  // so no need to export — all balance ops go through AdminController.
 })
 export class AdminModule {}

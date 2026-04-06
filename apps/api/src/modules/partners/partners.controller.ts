@@ -4,7 +4,7 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
-  IsEmail, IsEnum, IsIn, IsString, Length, MinLength,
+  IsEmail, IsIn, IsString, Length, MinLength, IsOptional,
 } from 'class-validator';
 
 import { Public }            from '../../common/decorators/public.decorator';
@@ -15,15 +15,24 @@ import type { AuthenticatedPartner } from '@elorge/types';
 // ── DTOs ──────────────────────────────────────────────────────
 
 class CreatePartnerDto {
-  @IsString() @Length(2, 100) name!:     string;
-  @IsEmail()                  email!:    string;
-  @IsString() @Length(2, 2)   country!:  string;
-  @IsString() @MinLength(8)   password!: string;  // ← set on creation now
+  @IsString() @Length(2, 100) name!:    string;
+  @IsEmail()                  email!:   string;
+  @IsString() @Length(2, 2)   country!: string;
+
+  // Optional — if absent the service auto-generates a secure temp password
+  @IsOptional()
+  @IsString() @MinLength(8)
+  password?: string;
 }
 
 class GenerateKeyDto {
   @IsString() @Length(2, 50) label!:       string;
   @IsIn(['live', 'sandbox'])  environment!: 'live' | 'sandbox';
+}
+
+class ChangePasswordDto {
+  @IsString() @MinLength(1)  currentPassword!: string;
+  @IsString() @MinLength(8)  newPassword!:     string;
 }
 
 // ── Controller ────────────────────────────────────────────────
@@ -33,18 +42,16 @@ class GenerateKeyDto {
 export class PartnersController {
   constructor(private readonly partnersService: PartnersService) {}
 
-  // ── Create partner (admin-only in production, guarded by AdminGuard at
-  //    the admin module level — this one remains @Public for seeding/dev) ──
   @Post()
   @Public()
-  @ApiOperation({ summary: 'Create a new partner' })
+  @ApiOperation({ summary: 'Create a new partner (admin)' })
   async create(@Body() dto: CreatePartnerDto) {
     return this.partnersService.create(dto);
   }
 
   @Get()
   @Public()
-  @ApiOperation({ summary: 'List all partners (admin)' })
+  @ApiOperation({ summary: 'List all partners' })
   async findAll() {
     return this.partnersService.findAll();
   }
@@ -66,31 +73,39 @@ export class PartnersController {
   @Post(':id/api-keys')
   @Public()
   @ApiOperation({ summary: 'Generate a new API key for a partner' })
-  async generateKey(
-    @Param('id') id:  string,
-    @Body()      dto: GenerateKeyDto,
-  ) {
+  async generateKey(@Param('id') id: string, @Body() dto: GenerateKeyDto) {
     return this.partnersService.generateApiKey(id, dto.label, dto.environment);
   }
 
   @Patch(':id/api-keys/:keyId/revoke')
   @Public()
   @ApiOperation({ summary: 'Revoke an API key' })
-  async revokeKey(
-    @Param('id')    id:    string,
-    @Param('keyId') keyId: string,
-  ) {
+  async revokeKey(@Param('id') id: string, @Param('keyId') keyId: string) {
     return this.partnersService.revokeApiKey(keyId, id);
   }
 
-  // ── Self-suspend (partner suspends their own account) ─────────
-  //    Uses ApiKeyGuard (dashboard JWT) — NOT AdminGuard.
-  //    Only the account owner can suspend themselves.
-  //    Only an admin can reactivate — no self-reactivate endpoint exists.
+  // ── Self-suspend ──────────────────────────────────────────
   @Patch('me/suspend')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Partner suspends their own account' })
   async selfSuspend(@CurrentPartner() partner: AuthenticatedPartner) {
     return this.partnersService.selfSuspend(partner.id);
+  }
+
+  // ── Change password ───────────────────────────────────────
+  // Called by the partner to set their own password.
+  // Verifies the current (temp) password first, then clears mustChangePassword.
+  @Patch('me/password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Partner changes their own password' })
+  async changePassword(
+    @CurrentPartner() partner: AuthenticatedPartner,
+    @Body()           dto:     ChangePasswordDto,
+  ) {
+    return this.partnersService.changePassword(
+      partner.id,
+      dto.currentPassword,
+      dto.newPassword,
+    );
   }
 }

@@ -20,6 +20,17 @@ export class NotificationsController {
     return this.notificationsService.list(partner.id);
   }
 
+  // PATCH /v1/notifications/read-all
+  // ⚠️  MUST be declared before /:id/read — otherwise NestJS matches
+  //     the literal string "read-all" as the :id param and this handler
+  //     is never reached.
+  @Patch('read-all')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Mark all notifications as read' })
+  async markAllRead(@CurrentPartner() partner: AuthenticatedPartner) {
+    return this.notificationsService.markAllRead(partner.id);
+  }
+
   // PATCH /v1/notifications/:id/read
   @Patch(':id/read')
   @HttpCode(HttpStatus.OK)
@@ -29,13 +40,5 @@ export class NotificationsController {
     @Param('id')      id:      string,
   ) {
     return this.notificationsService.markRead(partner.id, id);
-  }
-
-  // PATCH /v1/notifications/read-all
-  @Patch('read-all')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Mark all notifications as read' })
-  async markAllRead(@CurrentPartner() partner: AuthenticatedPartner) {
-    return this.notificationsService.markAllRead(partner.id);
   }
 }

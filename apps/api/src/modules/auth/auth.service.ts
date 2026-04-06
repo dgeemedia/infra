@@ -18,14 +18,11 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  // ── Validate raw API key (external partner API calls) ─────
+  // ── Validate raw API key ──────────────────────────────────
   async validateApiKey(rawKey: string): Promise<AuthenticatedPartner | null> {
     try {
       const candidates = await this.prisma.apiKey.findMany({
-        where: {
-          revokedAt:  null,
-          keyPreview: { startsWith: rawKey.substring(0, 12) },
-        },
+        where: { revokedAt: null, keyPreview: { startsWith: rawKey.substring(0, 12) } },
         include: { partner: true },
       });
 
@@ -36,12 +33,7 @@ export class AuthService {
             this.logger.warn(`Suspended partner attempted access: ${apiKey.partnerId}`);
             return null;
           }
-
-          void this.prisma.apiKey.update({
-            where: { id: apiKey.id },
-            data:  { lastUsedAt: new Date() },
-          });
-
+          void this.prisma.apiKey.update({ where: { id: apiKey.id }, data: { lastUsedAt: new Date() } });
           return {
             id:          apiKey.partner.id,
             name:        apiKey.partner.name,
@@ -53,7 +45,6 @@ export class AuthService {
           };
         }
       }
-
       return null;
     } catch (error) {
       this.logger.error('API key validation error', error);
@@ -61,28 +52,19 @@ export class AuthService {
     }
   }
 
-  // ── Validate dashboard JWT session token ──────────────────
-  // Used by ApiKeyGuard when the Authorization header contains a JWT
-  // (dashboard users) instead of a raw API key (external partners).
-  // Verifies signature + checks the account is still ACTIVE in the DB,
-  // so suspending a partner takes effect immediately on the next request.
+  // ── Validate dashboard JWT ────────────────────────────────
   async validateJwtToken(token: string): Promise<AuthenticatedPartner | null> {
     try {
       const payload = this.jwtService.verify<{
-        sub:   string;
-        email: string;
-        name:  string;
-        role:  string;
-      }>(token, {
-        secret: this.configService.get<string>('app.jwtSecret'),
-      });
+        sub: string; email: string; name: string; role: string;
+      }>(token, { secret: this.configService.get<string>('app.jwtSecret') });
 
-      const partner = await this.prisma.partner.findUnique({
-        where: { id: payload.sub },
-      });
+      const partner = await this.prisma.partner.findUnique({ where: { id: payload.sub } });
 
-      if (!partner || partner.status !== 'ACTIVE') {
-        this.logger.warn(`JWT auth: partner not found or inactive: ${payload.sub}`);
+      // Allow PENDING_REVIEW partners through so they can change their password
+      // The dashboard layout handles the redirect to /change-password
+      if (!partner || partner.status === 'SUSPENDED') {
+        this.logger.warn(`JWT auth: partner not found or suspended: ${payload.sub}`);
         return null;
       }
 
@@ -101,28 +83,27 @@ export class AuthService {
     }
   }
 
-  // ── Generate API key for a partner ────────────────────────
+  // ── Generate API key ──────────────────────────────────────
   async generateApiKey(
     partnerId:   string,
     label:       string,
     environment: 'live' | 'sandbox',
   ): Promise<{ fullKey: string; preview: string; id: string }> {
-    const prefix = environment === 'live'
+    const prefix  = environment === 'live'
       ? (this.configService.get<string>('app.apiKeyPrefix')        ?? 'el_live_')
       : (this.configService.get<string>('app.apiKeySandboxPrefix') ?? 'el_test_');
-
     const rawKey  = `${prefix}${uuidv4().replace(/-/g, '')}`;
     const keyHash = await bcrypt.hash(rawKey, 12);
     const preview = `${rawKey.substring(0, 16)}...${rawKey.slice(-4)}`;
-
-    const apiKey = await this.prisma.apiKey.create({
+    const apiKey  = await this.prisma.apiKey.create({
       data: { partnerId, label, keyHash, keyPreview: preview, environment },
     });
-
     return { fullKey: rawKey, preview, id: apiKey.id };
   }
 
   // ── Dashboard login ────────────────────────────────────────
+  // mustChangePassword is included in the JWT so the dashboard
+  // can redirect to /change-password without an extra API call.
   async loginDashboard(
     email:    string,
     password: string,
@@ -135,10 +116,14 @@ export class AuthService {
         return null;
       }
 
-      if (partner.status !== 'ACTIVE') {
+      // Suspended partners cannot log in
+      if (partner.status === 'SUSPENDED') {
         this.logger.warn(`Suspended partner attempted login: ${email}`);
         return null;
       }
+
+      // PENDING_REVIEW partners CAN log in — they need to change their password
+      // The dashboard will redirect them to /change-password
 
       if (!partner.passwordHash) {
         this.logger.warn(`Partner has no password set: ${email}`);
@@ -152,10 +137,11 @@ export class AuthService {
       }
 
       const token = this.jwtService.sign({
-        sub:   partner.id,
-        email: partner.email,
-        name:  partner.name,
-        role:  partner.role,
+        sub:               partner.id,
+        email:             partner.email,
+        name:              partner.name,
+        role:              partner.role,
+        mustChangePassword: partner.mustChangePassword, // ← included in token
       });
 
       return { accessToken: token };

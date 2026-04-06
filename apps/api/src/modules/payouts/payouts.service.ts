@@ -2,11 +2,14 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
+import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bull';
 
 import { ERROR_CODES, PayoutStatus, getBankName, isValidBankCode } from '@elorge/constants';
@@ -18,27 +21,29 @@ import { PspFactory }        from '../psp/psp.factory';
 import { CreatePayoutDto, PayoutQueryDto } from './payouts.dto';
 import { PayoutsRepository }              from './payouts.repository';
 import { PAYOUT_QUEUE }                   from '../../queues/payout.queue';
+import { PrismaService }                  from '../../database/prisma.service';
+
+// GBP pence → display string
+function penceToGbp(pence: number): string {
+  return `£${(pence / 100).toFixed(2)}`;
+}
 
 @Injectable()
 export class PayoutsService {
   private readonly logger = new Logger(PayoutsService.name);
 
   constructor(
-    private readonly repo:       PayoutsRepository,
-    private readonly fx:         FxService,   // used ONLY for fee calculation, not FX conversion
-    private readonly compliance: ComplianceService,
-    private readonly pspFactory: PspFactory,
+    private readonly repo:          PayoutsRepository,
+    private readonly fx:            FxService,
+    private readonly compliance:    ComplianceService,
+    private readonly pspFactory:    PspFactory,
+    private readonly prisma:        PrismaService,
+    private readonly configService: ConfigService,
     @InjectQueue(PAYOUT_QUEUE) private readonly payoutQueue: Queue,
   ) {}
 
   // ══════════════════════════════════════════════════════════
-  //  CREATE PAYOUT — called by partner via POST /v1/payouts
-  //
-  //  Transparent Fee Model:
-  //   - Partner calculates their own FX and provides nairaAmount
-  //   - Elorge delivers exactly nairaAmount to the recipient
-  //   - Elorge charges a separate platform fee (in GBP) logged
-  //     for invoicing — NOT deducted from nairaAmount
+  //  CREATE PAYOUT
   // ══════════════════════════════════════════════════════════
   async create(
     partnerId: string,
@@ -62,7 +67,55 @@ export class PayoutsService {
       });
     }
 
-    // ── 3. Compliance screening ───────────────────────────
+    // ── 3. Calculate platform fee ─────────────────────────
+    const fee      = this.fx.calculateFee(dto.sendAmount);
+    const feePence = Math.round(fee * 100); // convert to integer pence
+
+    // ── 4. Balance check — reject if insufficient funds ───
+    //
+    // Prefunded model: the partner must have deposited enough
+    // GBP in advance. We check their balance covers the fee
+    // for THIS payout. The nairaAmount is funded separately
+    // from our Flutterwave NGN wallet (topped up when we
+    // receive partner funds via Wise).
+    //
+    // minPartnerBalanceGbp env var sets the floor (default 0).
+    // You can raise it to e.g. £50 to require partners to keep
+    // a minimum cushion at all times.
+    const minBalancePence = Math.round(
+      (this.configService.get<number>('app.minPartnerBalanceGbp') ?? 0) * 100,
+    );
+
+    const partner = await this.prisma.partner.findUnique({
+      where:  { id: partnerId },
+      select: { balancePence: true, status: true },
+    });
+
+    if (!partner) {
+      throw new NotFoundException({ code: ERROR_CODES.PARTNER_NOT_FOUND, message: 'Partner not found.' });
+    }
+
+    const balanceAfterFee = partner.balancePence - feePence;
+
+    if (balanceAfterFee < minBalancePence) {
+      // 402 Payment Required — NestJS has no built-in exception for this,
+      // so we use HttpException directly.
+      throw new HttpException(
+        {
+          code:            'INSUFFICIENT_BALANCE',
+          message:         `Insufficient balance. Current: ${penceToGbp(partner.balancePence)}, `
+                         + `fee: ${penceToGbp(feePence)}, `
+                         + `minimum required after deduction: ${penceToGbp(minBalancePence)}. `
+                         + `Please top up your account.`,
+          balance:         partner.balancePence,
+          feePence,
+          minBalancePence,
+        },
+        HttpStatus.PAYMENT_REQUIRED, // 402
+      );
+    }
+
+    // ── 5. Compliance screening ───────────────────────────
     this.logger.log(`Screening recipient: ${dto.recipient.fullName}`);
     const screening = await this.compliance.screenRecipient({
       fullName:      dto.recipient.fullName,
@@ -70,21 +123,12 @@ export class PayoutsService {
       bankCode:      dto.recipient.bankCode,
     });
 
-    // ── 4. Platform fee (env-configured, GBP) ────────────
-    //    This is Elorge's service charge — logged for invoicing.
-    //    It is NOT deducted from nairaAmount. Partner receives
-    //    a monthly invoice for the total fee.
-    const fee = this.fx.calculateFee(dto.sendAmount);
-
-    // ── 5. nairaAmount comes from partner — no FX needed ─
-    //    Partner's FX engine already calculated this.
-    //    exchangeRate is optional — stored for audit only.
+    // ── 6. Create DB record ───────────────────────────────
     const nairaAmount  = dto.nairaAmount;
     const exchangeRate = dto.exchangeRate ?? 0;
+    const bankName     = getBankName(dto.recipient.bankCode);
 
-    // ── 6. Create DB record ───────────────────────────────
-    const bankName = getBankName(dto.recipient.bankCode);
-    const payout   = await this.repo.create({
+    const payout = await this.repo.create({
       partnerId:        partnerId,
       partnerReference: dto.partnerReference,
       sendAmount:       dto.sendAmount,
@@ -102,21 +146,41 @@ export class PayoutsService {
       },
     });
 
-    // ── 7. If flagged by compliance → hold for review ─────
+    // ── 7. Debit partner balance + write ledger entry ─────
+    //    We do this inside a transaction so both writes
+    //    succeed or both fail together.
+    await this.prisma.$transaction([
+      this.prisma.partner.update({
+        where: { id: partnerId },
+        data:  { balancePence: { decrement: feePence } },
+      }),
+      this.prisma.balanceTransaction.create({
+        data: {
+          partnerId,
+          type:              'DEBIT',
+          amountPence:       feePence,
+          balanceAfterPence: balanceAfterFee,
+          description:       `Fee for payout ${payout.id} (ref: ${dto.partnerReference})`,
+          payoutId:          payout.id,
+        },
+      }),
+    ]);
+
+    // ── 8. If flagged by compliance → hold for review ─────
     if (screening.flagged) {
       await this.repo.updateStatus(payout.id, PayoutStatus.FLAGGED, {
         failureReason: screening.matchDetails ?? 'Sanctions screening match',
       });
       this.logger.warn(`Payout ${payout.id} flagged: ${screening.matchDetails ?? ''}`);
     } else {
-      // ── 8. Push to async queue for PSP dispatch ──────────
+      // ── 9. Push to async queue ────────────────────────────
       await this.payoutQueue.add(
         'dispatch',
         { payoutId: payout.id },
         {
-          attempts:  5,
-          backoff:   { type: 'exponential', delay: 5000 },
-          jobId:     payout.id,        // idempotency — prevents duplicate jobs
+          attempts:         5,
+          backoff:          { type: 'exponential', delay: 5000 },
+          jobId:            payout.id,
           removeOnComplete: true,
           removeOnFail:     false,
         },
@@ -124,12 +188,11 @@ export class PayoutsService {
       this.logger.log(`Payout ${payout.id} queued for dispatch`);
     }
 
-    // ── 9. Return immediately — don't wait for bank ───────
     return this.formatResponse(payout, nairaAmount, exchangeRate, fee);
   }
 
   // ══════════════════════════════════════════════════════════
-  //  DISPATCH — called by the queue worker (not the API)
+  //  DISPATCH — called by the queue worker
   // ══════════════════════════════════════════════════════════
   async dispatch(payoutId: string): Promise<void> {
     const payout = await this.repo.findById(payoutId);
@@ -144,14 +207,12 @@ export class PayoutsService {
       return;
     }
 
-    // Mark as processing
     await this.repo.updateStatus(payoutId, PayoutStatus.PROCESSING);
 
-    // Call PSP — delivers the exact nairaAmount the partner specified
     const psp    = this.pspFactory.getAdapter();
     const result = await psp.transfer({
       reference:     payoutId,
-      amount:        Number(payout.nairaAmount),   // partner's exact NGN amount
+      amount:        Number(payout.nairaAmount),
       bankCode:      payout.recipient.bankCode,
       accountNumber: payout.recipient.accountNumber,
       accountName:   payout.recipient.fullName,
@@ -166,23 +227,47 @@ export class PayoutsService {
       });
       this.logger.log(`Payout ${payoutId} DELIVERED via ${result.pspReference}`);
     } else {
+      // ── On failure: refund the fee back to the partner ───
+      // feePence is derived from the stored `fee` (GBP decimal → integer pence).
+      // We don't store feePence as a separate DB column; `fee` is the source of truth.
+      const feePence = Math.round(Number(payout.fee) * 100);
+
+      if (feePence > 0) {
+        await this.prisma.$transaction(async (tx) => {
+          const updated = await tx.partner.update({
+            where:  { id: payout.partnerId },
+            data:   { balancePence: { increment: feePence } },
+            select: { balancePence: true },
+          });
+          await tx.balanceTransaction.create({
+            data: {
+              partnerId:         payout.partnerId,
+              type:              'REFUND',
+              amountPence:       feePence,
+              balanceAfterPence: updated.balancePence,
+              description:       `Fee refund for failed payout ${payoutId}`,
+              payoutId,
+            },
+          });
+        });
+        this.logger.log(
+          `Refunded ${penceToGbp(feePence)} to partner ${payout.partnerId} for failed payout ${payoutId}`,
+        );
+      }
+
       await this.repo.updateStatus(payoutId, PayoutStatus.FAILED, {
         pspReference:  result.pspReference,
         failureReason: result.message ?? 'PSP transfer failed',
       });
       this.logger.warn(`Payout ${payoutId} FAILED: ${result.message ?? 'unknown'}`);
-      // Throw so BullMQ retries the job
       throw new Error(`Transfer failed: ${result.message ?? 'unknown'}`);
     }
   }
 
   // ══════════════════════════════════════════════════════════
-  //  GET STATUS — GET /v1/payouts/:id
+  //  GET STATUS
   // ══════════════════════════════════════════════════════════
-  async getStatus(
-    payoutId:  string,
-    partnerId: string,
-  ): Promise<PayoutStatusResponse> {
+  async getStatus(payoutId: string, partnerId: string): Promise<PayoutStatusResponse> {
     const payout = await this.repo.findById(payoutId);
 
     if (!payout || payout.partnerId !== partnerId) {
@@ -205,12 +290,9 @@ export class PayoutsService {
   }
 
   // ══════════════════════════════════════════════════════════
-  //  LIST PAYOUTS — GET /v1/payouts
+  //  LIST PAYOUTS
   // ══════════════════════════════════════════════════════════
-  async list(
-    partnerId: string,
-    query:     PayoutQueryDto,
-  ): Promise<PayoutListResponse> {
+  async list(partnerId: string, query: PayoutQueryDto): Promise<PayoutListResponse> {
     const page     = query.page     ?? 1;
     const pageSize = query.pageSize ?? 20;
 
@@ -247,12 +329,11 @@ export class PayoutsService {
     };
   }
 
-  // ── Format API response ────────────────────────────────────
   private formatResponse(
-    payout:      { id: string; partnerReference: string; status: string; createdAt: Date },
-    nairaAmount: number,
+    payout:       { id: string; partnerReference: string; status: string; createdAt: Date },
+    nairaAmount:  number,
     exchangeRate: number,
-    fee:         number,
+    fee:          number,
   ): PayoutResponse {
     return {
       payoutId:          payout.id,
