@@ -14,14 +14,12 @@ import {
   databaseConfig,
   redisConfig,
   pspConfig,
-  fxConfig,
   complianceConfig,
 } from './config/app.config';
 
 import { AuthModule }          from './modules/auth/auth.module';
 import { PartnersModule }      from './modules/partners/partners.module';
 import { PayoutsModule }       from './modules/payouts/payouts.module';
-import { FxModule }            from './modules/fx/fx.module';
 import { ComplianceModule }    from './modules/compliance/compliance.module';
 import { WebhooksModule }      from './modules/webhooks/webhooks.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -34,7 +32,7 @@ import { ApiKeyGuard }         from './common/guards/api-key.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, redisConfig, pspConfig, fxConfig, complianceConfig],
+      load: [appConfig, databaseConfig, redisConfig, pspConfig, complianceConfig],
     }),
 
     PrismaModule,
@@ -55,10 +53,9 @@ import { ApiKeyGuard }         from './common/guards/api-key.guard';
     AuthModule,
     PartnersModule,
     PayoutsModule,
-    FxModule,
     ComplianceModule,
     WebhooksModule,
-    NotificationsModule,   // ← NEW
+    NotificationsModule,
     PspModule,
     AdminModule,
   ],

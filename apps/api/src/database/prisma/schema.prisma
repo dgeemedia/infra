@@ -8,6 +8,13 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ─────────────────────────────────────────────────────────────
+// PARTNER
+// Partners are UK-licensed entities that source their own FX.
+// They pre-fund a Naira wallet with Elorge (balanceKobo).
+// Elorge routes disbursements via Flutterwave and earns a small
+// per-payout Naira fee.
+// ─────────────────────────────────────────────────────────────
 model Partner {
   id                  String               @id @default(uuid())
   name                String
@@ -18,8 +25,13 @@ model Partner {
   updatedAt           DateTime             @updatedAt
   passwordHash        String?
   role                PartnerRole          @default(PARTNER)
-  balancePence        Int                  @default(0)
+
+  // Balance stored in kobo (1 NGN = 100 kobo) to avoid float drift.
+  // Partners fund this wallet; Elorge debits nairaAmount + fee per payout.
+  balanceKobo         Int                  @default(0)
+
   mustChangePassword  Boolean              @default(false)
+
   apiKeys             ApiKey[]
   auditLogs           AuditLog[]
   balanceTransactions BalanceTransaction[]
@@ -30,6 +42,9 @@ model Partner {
   @@map("partners")
 }
 
+// ─────────────────────────────────────────────────────────────
+// API KEY
+// ─────────────────────────────────────────────────────────────
 model ApiKey {
   id          String            @id @default(uuid())
   partnerId   String
@@ -47,23 +62,42 @@ model ApiKey {
   @@map("api_keys")
 }
 
+// ─────────────────────────────────────────────────────────────
+// PAYOUT
+//
+// Simplified flow:
+//  1. Partner sends { nairaAmount, recipient, partnerReference }
+//  2. Elorge debits (nairaAmount + feeKobo) from partner wallet
+//  3. Elorge transfers exactly nairaAmount to recipient via Flutterwave
+//  4. Elorge retains feeKobo as platform revenue
+//
+// No sendCurrency / exchangeRate stored — partner owns FX entirely.
+// exchangeRateAudit is optional and never used in calculations.
+// ─────────────────────────────────────────────────────────────
 model Payout {
-  id                  String               @id @default(uuid())
-  partnerId           String
-  partnerReference    String
-  sendAmount          Decimal              @db.Decimal(12, 2)
-  sendCurrency        String
-  nairaAmount         Decimal              @db.Decimal(14, 2)
-  exchangeRate        Decimal              @db.Decimal(10, 4)
-  fee                 Decimal              @db.Decimal(10, 2)
-  status              PayoutStatus         @default(PENDING)
-  pspReference        String?
-  failureReason       String?
-  bankSessionId       String?
-  narration           String?
-  deliveredAt         DateTime?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                String               @id @default(uuid())
+  partnerId         String
+  partnerReference  String
+
+  // Amount to credit to recipient's Nigerian bank account (kobo)
+  nairaAmountKobo   Int
+
+  // Elorge platform fee deducted from partner wallet (kobo)
+  feeKobo           Int                  @default(0)
+
+  // Optional: partner's declared FX rate for audit / reconciliation only.
+  // Elorge never reads this for any calculation.
+  exchangeRateAudit Decimal?             @db.Decimal(10, 4)
+
+  status            PayoutStatus         @default(PENDING)
+  pspReference      String?
+  failureReason     String?
+  bankSessionId     String?
+  narration         String?
+  deliveredAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
   balanceTransactions BalanceTransaction[]
   partner             Partner              @relation(fields: [partnerId], references: [id])
   recipient           Recipient?
@@ -76,6 +110,9 @@ model Payout {
   @@map("payouts")
 }
 
+// ─────────────────────────────────────────────────────────────
+// RECIPIENT
+// ─────────────────────────────────────────────────────────────
 model Recipient {
   id            String   @id @default(uuid())
   payoutId      String   @unique
@@ -91,6 +128,9 @@ model Recipient {
   @@map("recipients")
 }
 
+// ─────────────────────────────────────────────────────────────
+// WEBHOOK CONFIG
+// ─────────────────────────────────────────────────────────────
 model WebhookConfig {
   id                String            @id @default(uuid())
   partnerId         String
@@ -107,6 +147,9 @@ model WebhookConfig {
   @@map("webhook_configs")
 }
 
+// ─────────────────────────────────────────────────────────────
+// WEBHOOK DELIVERY
+// ─────────────────────────────────────────────────────────────
 model WebhookDelivery {
   id           String                @id @default(uuid())
   payoutId     String
@@ -129,6 +172,9 @@ model WebhookDelivery {
   @@map("webhook_deliveries")
 }
 
+// ─────────────────────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────────────────────
 model AuditLog {
   id         String      @id @default(uuid())
   partnerId  String?
@@ -147,6 +193,9 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ─────────────────────────────────────────────────────────────
+// NOTIFICATION
+// ─────────────────────────────────────────────────────────────
 model Notification {
   id        String           @id @default(uuid())
   partnerId String
@@ -163,17 +212,25 @@ model Notification {
   @@map("notifications")
 }
 
+// ─────────────────────────────────────────────────────────────
+// BALANCE TRANSACTION
+// All amounts in kobo (1/100 of a Naira).
+//
+// CREDIT  — partner tops up Naira wallet (admin confirms receipt)
+// DEBIT   — payout nairaAmount + fee deducted on payout creation
+// REFUND  — fee returned to partner if payout fails
+// ─────────────────────────────────────────────────────────────
 model BalanceTransaction {
-  id                String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
-  partnerId         String
-  type              BalanceTransactionType
-  amountPence       Int
-  balanceAfterPence Int
-  description       String
-  payoutId          String?
-  createdAt         DateTime               @default(now())
-  partner           Partner                @relation(fields: [partnerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  payout            Payout?                @relation(fields: [payoutId], references: [id], onUpdate: NoAction)
+  id                 String                 @id @default(dbgenerated("(gen_random_uuid())::text"))
+  partnerId          String
+  type               BalanceTransactionType
+  amountKobo         Int
+  balanceAfterKobo   Int
+  description        String
+  payoutId           String?
+  createdAt          DateTime               @default(now())
+  partner            Partner                @relation(fields: [partnerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  payout             Payout?                @relation(fields: [payoutId], references: [id], onUpdate: NoAction)
 
   @@index([partnerId])
   @@index([partnerId, type])
@@ -181,6 +238,9 @@ model BalanceTransaction {
   @@map("balance_transactions")
 }
 
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 enum PartnerRole {
   ADMIN
   PARTNER

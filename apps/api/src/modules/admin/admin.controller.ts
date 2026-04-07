@@ -13,11 +13,13 @@ import { AdminService }  from './admin.service';
 import { PrismaService } from '../../database/prisma.service';
 
 // ── Balance top-up DTO ────────────────────────────────────────
+// amountKobo: Naira in kobo (₦500.00 → 50000 kobo)
+// description: human note e.g. "Wise NGN transfer REF-12345 confirmed 2026-04-07"
 class TopUpDto {
   @IsInt()
   @IsPositive()
   @Type(() => Number)
-  amountPence!: number;
+  amountKobo!: number;
 
   @IsString()
   @Length(5, 200)
@@ -75,7 +77,7 @@ export class AdminController {
 
   // ── Partner balances ──────────────────────────────────────
   @Get('balances')
-  @ApiOperation({ summary: 'All partner balances + Flutterwave wallet' })
+  @ApiOperation({ summary: 'All partner Naira balances + Flutterwave wallet' })
   async getAllBalances() {
     const [partnerBalances, flwBalance] = await Promise.all([
       this.adminService.getAllPartnerBalances(),
@@ -85,43 +87,55 @@ export class AdminController {
   }
 
   // ── Balance top-up ────────────────────────────────────────
+  // Workflow:
+  //  1. Partner sends Naira (via local transfer / Wise NGN etc.) to your account
+  //  2. You confirm receipt
+  //  3. Call this endpoint → partner's Naira wallet is credited
+  //  4. Partner can now create payouts up to their balance
   @Post('partners/:id/balance/topup')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Credit a partner balance after confirming receipt' })
+  @ApiOperation({
+    summary: 'Credit a partner Naira wallet (admin confirms receipt)',
+    description:
+      'Call after confirming the partner\'s Naira transfer landed. '
+      + 'amountKobo is in kobo (₦500.00 = 50000). '
+      + 'description should include the transfer reference for audit.',
+  })
   async topUpBalance(
     @Param('id') id:  string,
     @Body()      dto: TopUpDto,
   ) {
     const partner = await this.prisma.partner.findUnique({
-      where: { id }, select: { id: true, name: true, balancePence: true },
+      where:  { id },
+      select: { id: true, name: true, balanceKobo: true },
     });
     if (!partner) throw new Error('Partner not found');
 
-    const balanceAfterPence = partner.balancePence + dto.amountPence;
+    const balanceAfterKobo = partner.balanceKobo + dto.amountKobo;
 
     await this.prisma.$transaction([
       this.prisma.partner.update({
         where: { id },
-        data:  { balancePence: { increment: dto.amountPence } },
+        data:  { balanceKobo: { increment: dto.amountKobo } },
       }),
       this.prisma.balanceTransaction.create({
         data: {
-          partnerId:         id,
-          type:              'CREDIT',
-          amountPence:       dto.amountPence,
-          balanceAfterPence,
-          description:       dto.description,
+          partnerId:        id,
+          type:             'CREDIT',
+          amountKobo:       dto.amountKobo,
+          balanceAfterKobo,
+          description:      dto.description,
         },
       }),
     ]);
 
     return {
-      partnerId:       id,
-      name:            partner.name,
-      creditedPence:   dto.amountPence,
-      creditedGbp:     (dto.amountPence / 100).toFixed(2),
-      newBalancePence: balanceAfterPence,
-      newBalanceGbp:   (balanceAfterPence / 100).toFixed(2),
+      partnerId:      id,
+      name:           partner.name,
+      creditedKobo:   dto.amountKobo,
+      creditedNaira:  (dto.amountKobo / 100).toFixed(2),
+      newBalanceKobo: balanceAfterKobo,
+      newBalanceNaira:(balanceAfterKobo / 100).toFixed(2),
     };
   }
 
@@ -154,28 +168,21 @@ export class AdminController {
 
     return {
       entries: entries.map((e) => ({
-        id:                e.id,
-        type:              e.type,
-        amountPence:       e.amountPence,
-        amountGbp:         (e.amountPence / 100).toFixed(2),
-        balanceAfterPence: e.balanceAfterPence,
-        balanceAfterGbp:   (e.balanceAfterPence / 100).toFixed(2),
-        description:       e.description,
-        payoutReference:   e.payout?.partnerReference ?? null,
-        createdAt:         e.createdAt.toISOString(),
+        id:               e.id,
+        type:             e.type,
+        amountKobo:       e.amountKobo,
+        amountNaira:      (e.amountKobo / 100).toFixed(2),
+        balanceAfterKobo: e.balanceAfterKobo,
+        balanceAfterNaira:(e.balanceAfterKobo / 100).toFixed(2),
+        description:      e.description,
+        payoutReference:  e.payout?.partnerReference ?? null,
+        createdAt:        e.createdAt.toISOString(),
       })),
       total,
       page:       p,
       pageSize:   ps,
       totalPages: Math.ceil(total / ps),
     };
-  }
-
-  // ── Receiving account ─────────────────────────────────────
-  @Get('receiving-account')
-  @ApiOperation({ summary: 'Your receiving account details (from .env)' })
-  getReceivingAccount() {
-    return this.adminService.getReceivingAccountDetails();
   }
 
   // ── Transactions ──────────────────────────────────────────

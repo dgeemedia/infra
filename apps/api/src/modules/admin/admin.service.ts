@@ -1,36 +1,17 @@
 // apps/api/src/modules/admin/admin.service.ts
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { HttpService }   from '@nestjs/axios';
+import { ConfigService }  from '@nestjs/config';
+import { HttpService }    from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
-import { PrismaService } from '../../database/prisma.service';
+import { PrismaService }  from '../../database/prisma.service';
 
-// ── Country → currency mapping ────────────────────────────────
-// Partners pay Elorge in THEIR local currency. A UK partner sends
-// GBP; a US partner sends USD. The balance is stored in minor units
-// (pence/cents) of that currency. Display formatting is done here.
-const COUNTRY_CURRENCY: Record<string, { code: string; symbol: string; name: string }> = {
-  GB: { code: 'GBP', symbol: '£', name: 'British Pound'  },
-  US: { code: 'USD', symbol: '$', name: 'US Dollar'       },
-  CA: { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar'},
-  AU: { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
-  EU: { code: 'EUR', symbol: '€', name: 'Euro'            },
-  DE: { code: 'EUR', symbol: '€', name: 'Euro'            },
-  FR: { code: 'EUR', symbol: '€', name: 'Euro'            },
-  NG: { code: 'NGN', symbol: '₦', name: 'Nigerian Naira'  },
-  GH: { code: 'GHS', symbol: 'GH₵', name: 'Ghanaian Cedi'},
-  KE: { code: 'KES', symbol: 'KSh', name: 'Kenyan Shilling'},
-  ZA: { code: 'ZAR', symbol: 'R',  name: 'South African Rand'},
-};
-
-function getCurrency(country: string) {
-  return COUNTRY_CURRENCY[country] ?? { code: 'GBP', symbol: '£', name: 'British Pound' };
-}
-
-function formatBalance(pence: number, country: string): string {
-  const cur = getCurrency(country);
-  const amount = pence / 100;
-  return `${cur.symbol}${amount.toFixed(2)}`;
+// kobo → "₦1,234.56"
+function koboToNaira(kobo: number): string {
+  return new Intl.NumberFormat('en-NG', {
+    style:    'currency',
+    currency: 'NGN',
+    minimumFractionDigits: 2,
+  }).format(kobo / 100);
 }
 
 @Injectable()
@@ -59,13 +40,18 @@ export class AdminService {
       this.prisma.partner.count({ where: { role: 'PARTNER', status: 'ACTIVE' } }),
       this.prisma.payout.count(),
       this.prisma.payout.count({ where: { status: 'DELIVERED' } }),
-      this.prisma.payout.count({ where: { status: 'FAILED' } }),
-      this.prisma.payout.count({ where: { status: 'FLAGGED' } }),
+      this.prisma.payout.count({ where: { status: 'FAILED'    } }),
+      this.prisma.payout.count({ where: { status: 'FLAGGED'   } }),
+      // Total naira delivered to recipients (kobo sum)
       this.prisma.payout.aggregate({
-        _sum: { nairaAmount: true },
+        _sum: { nairaAmountKobo: true },
         where: { status: 'DELIVERED' },
       }),
-      this.prisma.payout.aggregate({ _sum: { fee: true } }),
+      // Total fees earned (kobo sum)
+      this.prisma.payout.aggregate({
+        _sum: { feeKobo: true },
+        where: { status: 'DELIVERED' },
+      }),
     ]);
 
     const successRate = totalPayouts > 0
@@ -73,10 +59,17 @@ export class AdminService {
       : 0;
 
     return {
-      totalPartners, activePartners, totalPayouts,
-      deliveredPayouts, failedPayouts, flaggedPayouts, successRate,
-      totalVolumeNaira:   Number(volumeResult._sum.nairaAmount ?? 0),
-      totalFeesCollected: Number(feeResult._sum.fee ?? 0),
+      totalPartners,
+      activePartners,
+      totalPayouts,
+      deliveredPayouts,
+      failedPayouts,
+      flaggedPayouts,
+      successRate,
+      totalVolumeKobo:      volumeResult._sum.nairaAmountKobo ?? 0,
+      totalVolumeNaira:     koboToNaira(volumeResult._sum.nairaAmountKobo ?? 0),
+      totalFeesKobo:        feeResult._sum.feeKobo ?? 0,
+      totalFeesNaira:       koboToNaira(feeResult._sum.feeKobo ?? 0),
     };
   }
 
@@ -97,92 +90,73 @@ export class AdminService {
     });
 
     const volumeByPartner = await this.prisma.payout.groupBy({
-      by:     ['partnerId'],
-      _sum:   { nairaAmount: true },
+      by:    ['partnerId'],
+      _sum:  { nairaAmountKobo: true },
       _count: { id: true },
-      where:  { status: 'DELIVERED' },
+      where: { status: 'DELIVERED' },
     });
 
     const volumeMap = new Map(
-      volumeByPartner.map((v) => [v.partnerId, {
-        volume: Number(v._sum.nairaAmount ?? 0),
-        count:  v._count.id,
-      }]),
+      volumeByPartner.map((v) => [
+        v.partnerId,
+        { volumeKobo: v._sum.nairaAmountKobo ?? 0, count: v._count.id },
+      ]),
     );
 
-    return partners.map((p) => {
-      const currency = getCurrency(p.country);
-      return {
-        id:              p.id,
-        name:            p.name,
-        email:           p.email,
-        country:         p.country,
-        status:          p.status,
-        createdAt:       p.createdAt,
-        activeApiKeys:   p._count.apiKeys,
-        totalPayouts:    p._count.payouts,
-        activeWebhooks:  p._count.webhookConfigs,
-        deliveredVolume: volumeMap.get(p.id)?.volume ?? 0,
-        deliveredCount:  volumeMap.get(p.id)?.count  ?? 0,
-        currency:        currency.code,
-        currencySymbol:  currency.symbol,
-        balancePence:    p.balancePence,
-        balanceFormatted: formatBalance(p.balancePence, p.country),
-      };
-    });
+    return partners.map((p) => ({
+      id:               p.id,
+      name:             p.name,
+      email:            p.email,
+      country:          p.country,
+      status:           p.status,
+      createdAt:        p.createdAt,
+      activeApiKeys:    p._count.apiKeys,
+      totalPayouts:     p._count.payouts,
+      activeWebhooks:   p._count.webhookConfigs,
+      deliveredVolumeKobo:    volumeMap.get(p.id)?.volumeKobo ?? 0,
+      deliveredVolumeNaira:   koboToNaira(volumeMap.get(p.id)?.volumeKobo ?? 0),
+      deliveredCount:   volumeMap.get(p.id)?.count ?? 0,
+      balanceKobo:      p.balanceKobo,
+      balanceNaira:     koboToNaira(p.balanceKobo),
+    }));
   }
 
-  // ── All partner balances (balance-view endpoint) ──────────
+  // ── All partner balances ──────────────────────────────────
   async getAllPartnerBalances() {
     const partners = await this.prisma.partner.findMany({
       where:   { role: 'PARTNER' },
-      orderBy: [{ country: 'asc' }, { name: 'asc' }], // sorted by country then name
+      orderBy: [{ name: 'asc' }],
       select: {
-        id:           true,
-        name:         true,
-        email:        true,
-        country:      true,
-        status:       true,
-        balancePence: true,
-        // Last credit transaction for "last topped up" display
+        id:          true,
+        name:        true,
+        email:       true,
+        country:     true,
+        status:      true,
+        balanceKobo: true,
         balanceTransactions: {
           where:   { type: 'CREDIT' },
           orderBy: { createdAt: 'desc' },
           take:    1,
-          select:  { createdAt: true, amountPence: true, description: true },
+          select:  { createdAt: true, amountKobo: true, description: true },
         },
       },
     });
 
-    // Group by currency for summary totals
-    const byCurrency: Record<string, number> = {};
-    for (const p of partners) {
-      const cur = getCurrency(p.country).code;
-      byCurrency[cur] = (byCurrency[cur] ?? 0) + p.balancePence;
-    }
+    const totalKobo = partners.reduce((sum, p) => sum + p.balanceKobo, 0);
 
     return {
-      partners: partners.map((p) => {
-        const currency = getCurrency(p.country);
-        return {
-          id:               p.id,
-          name:             p.name,
-          email:            p.email,
-          country:          p.country,
-          status:           p.status,
-          currency:         currency.code,
-          currencySymbol:   currency.symbol,
-          balancePence:     p.balancePence,
-          balanceFormatted: formatBalance(p.balancePence, p.country),
-          lastTopUp:        p.balanceTransactions[0] ?? null,
-        };
-      }),
-      // GBP total (for partners with GBP balance) + breakdown per currency
-      currencyTotals: Object.entries(byCurrency).map(([code, pence]) => ({
-        currency: code,
-        pence,
-        formatted: `${code} ${(pence / 100).toFixed(2)}`,
+      partners: partners.map((p) => ({
+        id:           p.id,
+        name:         p.name,
+        email:        p.email,
+        country:      p.country,
+        status:       p.status,
+        balanceKobo:  p.balanceKobo,
+        balanceNaira: koboToNaira(p.balanceKobo),
+        lastTopUp:    p.balanceTransactions[0] ?? null,
       })),
+      totalKobo,
+      totalNaira: koboToNaira(totalKobo),
     };
   }
 
@@ -211,24 +185,15 @@ export class AdminService {
       );
       const ngn = response.data?.data?.[0];
       if (!ngn) return null;
-      return { currency: ngn.currency, available: ngn.available_balance, ledger: ngn.ledger_balance };
+      return {
+        currency:  ngn.currency,
+        available: ngn.available_balance,
+        ledger:    ngn.ledger_balance,
+      };
     } catch (err) {
       this.logger.error('Failed to fetch Flutterwave balance', err);
       return null;
     }
-  }
-
-  // ── Receiving account details (from env) ──────────────────
-  getReceivingAccountDetails() {
-    const ra = this.configService.get('receivingAccount') as Record<string, unknown> | undefined;
-    if (!ra) return null;
-    return {
-      provider: ra['provider'] ?? 'Not configured',
-      gbp: ra['gbp'],
-      usd: ra['usd'],
-      eur: ra['eur'],
-      cad: ra['cad'],
-    };
   }
 
   // ── Get single partner detail ─────────────────────────────
@@ -241,8 +206,6 @@ export class AdminService {
       },
     });
     if (!partner) throw new NotFoundException('Partner not found');
-
-    const currency = getCurrency(partner.country);
 
     const [payoutStats, recentPayouts, recentLedger] = await Promise.all([
       this.prisma.payout.groupBy({
@@ -265,9 +228,7 @@ export class AdminService {
 
     return {
       ...partner,
-      currency:         currency.code,
-      currencySymbol:   currency.symbol,
-      balanceFormatted: formatBalance(partner.balancePence, partner.country),
+      balanceNaira: koboToNaira(partner.balanceKobo),
       payoutStats,
       recentPayouts,
       recentLedger,
@@ -289,12 +250,17 @@ export class AdminService {
 
   // ── All transactions ──────────────────────────────────────
   async getAllTransactions(filters: {
-    page?: number; pageSize?: number; status?: string;
-    partnerId?: string; startDate?: string; endDate?: string;
+    page?:       number;
+    pageSize?:   number;
+    status?:     string;
+    partnerId?:  string;
+    startDate?:  string;
+    endDate?:    string;
   }) {
     const page     = filters.page     ?? 1;
     const pageSize = filters.pageSize ?? 20;
     const skip     = (page - 1) * pageSize;
+
     const where: Record<string, unknown> = {};
     if (filters.status)    where['status']    = filters.status;
     if (filters.partnerId) where['partnerId'] = filters.partnerId;
@@ -307,7 +273,10 @@ export class AdminService {
 
     const [data, total] = await Promise.all([
       this.prisma.payout.findMany({
-        where, skip, take: pageSize, orderBy: { createdAt: 'desc' },
+        where,
+        skip,
+        take:    pageSize,
+        orderBy: { createdAt: 'desc' },
         include: {
           recipient: true,
           partner:   { select: { id: true, name: true, email: true, country: true } },
@@ -349,12 +318,9 @@ export class AdminService {
   }
 
   // ── Inbox: partner interest submissions ───────────────────
-  // Reads SYSTEM notifications addressed to admin — these are
-  // created by the /v1/interest public endpoint when a prospect
-  // submits the expression of interest form.
   async getInboxMessages(page = 1, pageSize = 20) {
     const admin = await this.prisma.partner.findFirst({
-      where: { role: 'ADMIN' },
+      where:  { role: 'ADMIN' },
       select: { id: true },
     });
     if (!admin) return { messages: [], total: 0, page, pageSize, totalPages: 0 };

@@ -1,7 +1,6 @@
 // apps/api/src/modules/payouts/payouts.dto.ts
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
-  IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -14,21 +13,19 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-import { Currency } from '@elorge/constants';
-
-// ── Nested: Recipient ─────────────────────────────────────
+// ── Recipient ─────────────────────────────────────────────────
 export class RecipientDto {
   @ApiProperty({ example: 'Chukwuemeka Obi' })
   @IsString()
   @IsNotEmpty()
   fullName!: string;
 
-  @ApiProperty({ example: '058', description: 'CBN bank code (3-6 digits)' })
+  @ApiProperty({ example: '058', description: 'CBN bank code (3–6 digits)' })
   @IsString()
-  @Matches(/^\d{3,6}$/, { message: 'bankCode must be 3-6 digits' })
+  @Matches(/^\d{3,6}$/, { message: 'bankCode must be 3–6 digits' })
   bankCode!: string;
 
-  @ApiProperty({ example: '0123456789', description: '10-digit NUBAN' })
+  @ApiProperty({ example: '0123456789', description: '10-digit NUBAN account number' })
   @IsString()
   @Length(10, 10, { message: 'accountNumber must be exactly 10 digits' })
   @Matches(/^\d{10}$/, { message: 'accountNumber must contain only digits' })
@@ -41,106 +38,62 @@ export class RecipientDto {
   phone?: string;
 }
 
-// ── Nested: Sender ────────────────────────────────────────
-export class SenderDto {
-  @ApiProperty({ example: 'David Okafor' })
-  @IsString()
-  @IsNotEmpty()
-  fullName!: string;
-
-  @ApiProperty({ example: 'GB', description: 'ISO 3166-1 alpha-2 country code' })
-  @IsString()
-  @Length(2, 2)
-  country!: string;
-
-  @ApiPropertyOptional({ example: 'USR_12345' })
-  @IsOptional()
-  @IsString()
-  externalId?: string;
-}
-
-// ── Create Payout ─────────────────────────────────────────
+// ── Create Payout ─────────────────────────────────────────────
 /**
- * Transparent Fee Model (Option A)
- * ─────────────────────────────────────────────────────────
- * Partners handle their own FX conversion and provide the
- * final nairaAmount they want delivered to the recipient.
- * Elorge charges a separate, explicit platform fee per payout.
+ * Naira-pipe model
+ * ─────────────────────────────────────────────────────────────
+ * Partners handle FX entirely on their side and arrive here
+ * with a final Naira amount to disburse. Elorge:
+ *   1. Debits (nairaAmount + platform fee) from the partner's
+ *      pre-funded Naira wallet.
+ *   2. Transfers exactly nairaAmount to the recipient via
+ *      Flutterwave.
+ *   3. Retains the platform fee as revenue.
  *
- * Flow:
- *  1. Partner converts GBP → NGN using their own FX engine
- *  2. Partner sends { sendAmount, sendCurrency, nairaAmount }
- *  3. Elorge deducts its platform fee from the partner's
- *     account balance (invoiced separately / prefunded)
- *  4. Elorge delivers exactly nairaAmount to the recipient
+ * exchangeRateAudit is optional and purely for the partner's
+ * own reconciliation records — Elorge never reads it.
  */
 export class CreatePayoutDto {
   @ApiProperty({
-    example:     'FP_TXN_20260327_001',
-    description: 'Unique reference per partner. Duplicate references are rejected.',
+    example:     'FP_TXN_20260407_001',
+    description: 'Unique reference per partner. Duplicate references are rejected (idempotency key).',
   })
   @IsString()
   @IsNotEmpty()
   @Length(1, 100)
   partnerReference!: string;
 
-  // ── Sending side (for audit + platform fee calculation) ──
-
   @ApiProperty({
-    example:     100,
-    description: 'Amount in the sending currency. Used to calculate Elorge platform fee.',
-  })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  @Max(50_000, { message: 'sendAmount cannot exceed 50,000' })
-  @Type(() => Number)
-  sendAmount!: number;
-
-  @ApiProperty({
-    enum:    Currency,
-    example: Currency.GBP,
-    description: 'Currency of the sending amount (GBP, USD, EUR, CAD).',
-  })
-  @IsEnum(Currency)
-  sendCurrency!: Currency;
-
-  // ── Receiving side (partner has already done FX) ─────────
-
-  @ApiProperty({
-    example:     205000,
+    example:     25000000,
     description:
-      'Exact NGN amount to credit to the recipient\'s account. ' +
-      'Your system calculates this using your own FX rate. ' +
-      'Elorge delivers this exact amount — no deductions.',
+      'Amount to credit to the recipient\'s Nigerian bank account, in kobo. '
+      + '₦250,000.00 → nairaAmountKobo: 25000000. '
+      + 'Elorge delivers this exact amount — no deductions from the recipient side.',
   })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(100, { message: 'nairaAmount must be at least ₦100' })
-  @Max(50_000_000, { message: 'nairaAmount cannot exceed ₦50,000,000 per payout' })
+  @IsNumber({ maxDecimalPlaces: 0 })
+  @IsPositive()
+  @Min(100_00,        { message: 'nairaAmountKobo must be at least ₦100 (10000 kobo)' })
+  @Max(50_000_000_00, { message: 'nairaAmountKobo cannot exceed ₦50,000,000 per payout' })
   @Type(() => Number)
-  nairaAmount!: number;
+  nairaAmountKobo!: number;
 
   @ApiPropertyOptional({
     example:     2050.45,
     description:
-      'Your FX rate used (optional — for audit trail and reconciliation only). ' +
-      'Elorge does not use this for calculations.',
+      'Your FX rate (optional). Stored for audit and reconciliation only. '
+      + 'Elorge does not use this value in any calculation.',
   })
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 6 })
   @IsPositive()
   @Type(() => Number)
-  exchangeRate?: number;
-
-  // ── Parties ───────────────────────────────────────────────
+  exchangeRateAudit?: number;
 
   @ApiProperty({ type: RecipientDto })
   recipient!: RecipientDto;
 
-  @ApiProperty({ type: SenderDto })
-  sender!: SenderDto;
-
   @ApiPropertyOptional({
-    example:     'Family support — March 2026',
+    example:     'Family support — April 2026',
     description: 'Description shown on recipient\'s bank statement (max 100 chars).',
   })
   @IsOptional()
@@ -149,7 +102,7 @@ export class CreatePayoutDto {
   narration?: string;
 }
 
-// ── List Payouts Query ────────────────────────────────────
+// ── List Payouts Query ────────────────────────────────────────
 export class PayoutQueryDto {
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()

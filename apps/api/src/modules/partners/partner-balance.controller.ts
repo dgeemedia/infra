@@ -12,24 +12,24 @@ export class PartnerBalanceController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get own balance and recent ledger' })
+  @ApiOperation({ summary: 'Get own Naira balance and recent ledger' })
   async getMyBalance(@CurrentPartner() partner: AuthenticatedPartner) {
     const [record, recentLedger] = await Promise.all([
       this.prisma.partner.findUnique({
         where:  { id: partner.id },
-        select: { balancePence: true, country: true },
+        select: { balanceKobo: true, country: true },
       }),
       this.prisma.balanceTransaction.findMany({
         where:   { partnerId: partner.id },
         orderBy: { createdAt: 'desc' },
         take:    10,
         select: {
-          id:                true,
-          type:              true,
-          amountPence:       true,
-          balanceAfterPence: true,
-          description:       true,
-          createdAt:         true,
+          id:               true,
+          type:             true,
+          amountKobo:       true,
+          balanceAfterKobo: true,
+          description:      true,
+          createdAt:        true,
         },
       }),
     ]);
@@ -37,14 +37,14 @@ export class PartnerBalanceController {
     if (!record) throw new Error('Partner not found');
 
     return {
-      balancePence:  record.balancePence,
-      balanceGbp:    (record.balancePence / 100).toFixed(2),
+      balanceKobo:   record.balanceKobo,
+      balanceNaira:  (record.balanceKobo / 100).toFixed(2),
       country:       record.country,
       recentLedger:  recentLedger.map((e) => ({
         ...e,
-        amountGbp:       (e.amountPence / 100).toFixed(2),
-        balanceAfterGbp: (e.balanceAfterPence / 100).toFixed(2),
-        createdAt:       e.createdAt.toISOString(),
+        amountNaira:      (e.amountKobo / 100).toFixed(2),
+        balanceAfterNaira:(e.balanceAfterKobo / 100).toFixed(2),
+        createdAt:        e.createdAt.toISOString(),
       })),
     };
   }
