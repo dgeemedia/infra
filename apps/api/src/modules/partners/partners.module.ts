@@ -6,9 +6,10 @@ import { PartnersService }      from './partners.service';
 import { PartnersController }   from './partners.controller';
 import { InterestController }   from './interest.controller';
 import { PartnerBalanceController } from './partner-balance.controller';
+import { VanModule }            from '../van/van.module';
 
 @Module({
-  imports:     [AuthModule, PrismaModule],
+  imports:     [AuthModule, PrismaModule, VanModule],
   providers:   [PartnersService],
   controllers: [PartnersController, InterestController, PartnerBalanceController],
   exports:     [PartnersService],

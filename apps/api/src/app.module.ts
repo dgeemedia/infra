@@ -27,7 +27,7 @@ import { PspModule }           from './modules/psp/psp.module';
 import { AdminModule }         from './modules/admin/admin.module';
 import { HealthController }    from './health.controller';
 import { ApiKeyGuard }         from './common/guards/api-key.guard';
-
+import { VanModule }            from './modules/van/van.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -58,6 +58,7 @@ import { ApiKeyGuard }         from './common/guards/api-key.guard';
     NotificationsModule,
     PspModule,
     AdminModule,
+    VanModule,
   ],
   controllers: [HealthController],
   providers: [

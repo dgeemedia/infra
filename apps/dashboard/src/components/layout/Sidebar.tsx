@@ -8,6 +8,7 @@ import {
   LayoutDashboard, ArrowRightLeft, Key,
   Webhook, Settings, ChevronLeft,
   Users, AlertTriangle, ShieldCheck, MessageSquare,
+  Clock,                                             // ← added
 } from 'lucide-react';
 
 import { useDashboardStore }  from '@/store/dashboard.store';

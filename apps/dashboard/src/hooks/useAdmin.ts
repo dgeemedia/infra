@@ -13,9 +13,6 @@ import { api } from '@/lib/api';
 //   res.data       → { success, data: <payload>, timestamp }
 //   res.data.data  → <payload>  ✅
 //
-// Controllers no longer add their own { success, data } envelope —
-// the interceptor handles that exclusively.
-//
 function unwrap<T>(res: { data: { success: boolean; data: T; timestamp: string } }): T {
   return res.data.data;
 }
@@ -47,21 +44,20 @@ export function useAdminStats() {
 
 // ── All partner balances + Flutterwave wallet ─────────────────
 export interface AdminBalancePartner {
-  id:               string;
-  name:             string;
-  email:            string;
-  country:          string;
-  status:           string;
-  currency:         string;
-  currencySymbol:   string;
-  balancePence:     number;
-  balanceFormatted: string;
-  lastTopUp:        { createdAt: string; amountPence: number; description: string } | null;
+  id:           string;
+  name:         string;
+  email:        string;
+  country:      string;
+  status:       string;
+  balanceKobo:  number;
+  balanceNaira: string;   // formatted "₦X,XXX.XX" from API
+  lastTopUp:    { createdAt: string; amountKobo: number; description: string } | null;
 }
 
 export interface AdminBalances {
   partners:           AdminBalancePartner[];
-  currencyTotals:     Array<{ currency: string; pence: number; formatted: string }>;
+  totalKobo:          number;
+  totalNaira:         string;
   flutterwaveBalance: { currency: string; available: number; ledger: number } | null;
 }
 
@@ -80,17 +76,19 @@ export function useAdminBalances() {
 export function useTopUpPartnerBalance() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ partnerId, amountPence, description }: {
+    mutationFn: async ({ partnerId, amountKobo, description }: {
       partnerId:   string;
-      amountPence: number;
+      amountKobo:  number;
       description: string;
     }) => unwrap(
       await api.post<{ success: boolean; data: {
-        creditedGbp:   string;
-        newBalanceGbp: string;
+        creditedKobo:    number;
+        creditedNaira:   string;
+        newBalanceKobo:  number;
+        newBalanceNaira: string;
       }; timestamp: string }>(
         `/v1/admin/partners/${partnerId}/balance/topup`,
-        { amountPence, description },
+        { amountKobo, description },
       ),
     ),
     onSuccess: () => {
@@ -103,13 +101,15 @@ export function useTopUpPartnerBalance() {
 
 // ── Balance ledger for a specific partner ─────────────────────
 export interface LedgerEntry {
-  id:              string;
-  type:            'CREDIT' | 'DEBIT' | 'REFUND';
-  amountGbp:       string;
-  balanceAfterGbp: string;
-  description:     string;
-  payoutReference: string | null;
-  createdAt:       string;
+  id:                string;
+  type:              'CREDIT' | 'DEBIT' | 'REFUND';
+  amountKobo:        number;
+  amountNaira:       string;
+  balanceAfterKobo:  number;
+  balanceAfterNaira: string;
+  description:       string;
+  payoutReference:   string | null;
+  createdAt:         string;
 }
 
 export interface PartnerLedger {
@@ -154,21 +154,20 @@ export function useReceivingAccount() {
 
 // ── All partners ──────────────────────────────────────────────
 export interface AdminPartner {
-  id:               string;
-  name:             string;
-  email:            string;
-  country:          string;
-  status:           string;
-  createdAt:        string;
-  activeApiKeys:    number;
-  totalPayouts:     number;
-  activeWebhooks:   number;
-  deliveredVolume:  number;
-  deliveredCount:   number;
-  currency:         string;
-  currencySymbol:   string;
-  balancePence:     number;
-  balanceFormatted: string;
+  id:                    string;
+  name:                  string;
+  email:                 string;
+  country:               string;
+  status:                string;
+  createdAt:             string;
+  activeApiKeys:         number;
+  totalPayouts:          number;
+  activeWebhooks:        number;
+  deliveredVolumeKobo:   number;
+  deliveredVolumeNaira:  string;
+  deliveredCount:        number;
+  balanceKobo:           number;
+  balanceNaira:          string;
 }
 
 export function useAdminPartners() {
@@ -212,8 +211,6 @@ export interface AdminTransaction {
   id:               string;
   partnerId:        string;
   partnerReference: string;
-  sendAmount:       number;
-  sendCurrency:     string;
   nairaAmount:      number;
   fee:              number;
   status:           string;
@@ -266,8 +263,6 @@ export interface FlaggedPayout {
   partnerId:        string;
   partnerReference: string;
   nairaAmount:      number;
-  sendAmount:       number;
-  sendCurrency:     string;
   failureReason:    string | null;
   createdAt:        string;
   partner:          { id: string; name: string; email: string };

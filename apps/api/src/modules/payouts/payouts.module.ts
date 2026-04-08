@@ -3,7 +3,6 @@ import { Module }     from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 
 import { ComplianceModule }    from '../compliance/compliance.module';
-import { FxModule }            from '../fx/fx.module';
 import { PspModule }           from '../psp/psp.module';
 import { WebhooksModule }      from '../webhooks/webhooks.module';
 import { PAYOUT_QUEUE }        from '../../queues/payout.queue';
@@ -16,7 +15,6 @@ import { PayoutQueueProcessor } from '../../queues/payout.queue.processor';
   imports: [
     BullModule.registerQueue({ name: PAYOUT_QUEUE }),
     ComplianceModule,
-    FxModule,          // ← required: PayoutsService injects FxService for fee calculation
     PspModule,
     WebhooksModule,
   ],

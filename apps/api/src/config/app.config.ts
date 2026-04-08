@@ -18,20 +18,20 @@ export const appConfig = registerAs('app', () => ({
   webhookMaxRetries:   parseInt(process.env['WEBHOOK_MAX_RETRIES']    ?? '5',    10),
   webhookRetryDelayMs: parseInt(process.env['WEBHOOK_RETRY_DELAY_MS'] ?? '5000', 10),
 
-  // ── Platform fee (Naira) ─────────────────────────────────
-  // Flat naira fee charged per payout. Partners keep their FX margin;
-  // Elorge earns only this naira spread per disbursement.
-  // Set via env to adjust without code changes.
-  platformFeeKobo: parseInt(process.env['PLATFORM_FEE_KOBO'] ?? '50000', 10), // default ₦500
+  // ── Platform fee ─────────────────────────────────────────
+  // Default fee for override/testing. In production, the fee is
+  // calculated by calculateFeeKobo() in payouts.service.ts based
+  // on payout amount tiers.
+  platformFeeKobo: parseInt(process.env['PLATFORM_FEE_KOBO'] ?? '25000', 10), // ₦250
 
-  // ── Minimum partner naira balance before payouts are blocked ──
-  // If balance (kobo) drops below this after deducting the payout
-  // amount + fee, the API rejects the request until they top up.
+  // ── Minimum balance requirement ───────────────────────────
+  // Partners must keep this much kobo in their wallet after a
+  // payout is deducted. 0 = no floor. Raise to require a buffer.
   minPartnerBalanceKobo: parseInt(process.env['MIN_PARTNER_BALANCE_KOBO'] ?? '0', 10),
 
-  // ── Per-payout naira limits ──────────────────────────────
-  minPayoutNaira: parseInt(process.env['MIN_PAYOUT_NAIRA'] ?? '1000',       10), // ₦1,000
-  maxPayoutNaira: parseInt(process.env['MAX_PAYOUT_NAIRA'] ?? '50000000',   10), // ₦50,000,000
+  // ── Payout naira limits ───────────────────────────────────
+  minPayoutKobo: parseInt(process.env['MIN_PAYOUT_KOBO'] ?? '10000',      10), // ₦100
+  maxPayoutKobo: parseInt(process.env['MAX_PAYOUT_KOBO'] ?? '5000000000', 10), // ₦50,000,000
 }));
 
 export const databaseConfig = registerAs('database', () => ({
@@ -44,8 +44,11 @@ export const redisConfig = registerAs('redis', () => ({
 
 export const pspConfig = registerAs('psp', () => ({
   flutterwave: {
-    secretKey: process.env['FLUTTERWAVE_SECRET_KEY'],
-    baseUrl:   process.env['FLUTTERWAVE_BASE_URL'] ?? 'https://api.flutterwave.com/v3',
+    secretKey:   process.env['FLUTTERWAVE_SECRET_KEY'],
+    baseUrl:     process.env['FLUTTERWAVE_BASE_URL'] ?? 'https://api.flutterwave.com/v3',
+    // Secret Hash set in Flutterwave dashboard → Settings → Webhooks
+    // Must match exactly what you enter there.
+    webhookHash: process.env['FLUTTERWAVE_WEBHOOK_HASH'],
   },
 }));
 

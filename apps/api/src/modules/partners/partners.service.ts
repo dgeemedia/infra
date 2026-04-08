@@ -4,6 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt       from 'bcryptjs';
@@ -11,10 +12,10 @@ import * as crypto       from 'crypto';
 import { ERROR_CODES }   from '@elorge/constants';
 import { AuthService }   from '../auth/auth.service';
 import { PrismaService } from '../../database/prisma.service';
+import { VanService }    from '../van/van.service';
 
 // ── Generate a readable temporary password ────────────────────
 // Format: El-XXXXX-XXXXX  e.g. "El-Xk3mP-9qRtZ"
-// Avoids ambiguous chars (0/O, 1/l/I). Cryptographically random.
 function generateTempPassword(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   const bytes = crypto.randomBytes(10);
@@ -27,20 +28,20 @@ function generateTempPassword(): string {
 
 @Injectable()
 export class PartnersService {
+  private readonly logger = new Logger(PartnersService.name);
+
   constructor(
     private readonly prisma:      PrismaService,
     private readonly authService: AuthService,
+    private readonly vanService:  VanService,
   ) {}
 
   // ── Create partner ────────────────────────────────────────
-  // Password is auto-generated if not provided.
-  // mustChangePassword=true forces the partner to set their own
-  // password on first dashboard login.
   async create(data: {
     name:      string;
     email:     string;
     country:   string;
-    password?: string; // optional — auto-generated when absent
+    password?: string;
   }) {
     const existing = await this.prisma.partner.findUnique({ where: { email: data.email } });
     if (existing) {
@@ -53,6 +54,7 @@ export class PartnersService {
     const tempPassword = data.password ?? generateTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
+    // Create the partner record
     const partner = await this.prisma.partner.create({
       data: {
         name:               data.name,
@@ -65,18 +67,42 @@ export class PartnersService {
       },
     });
 
+    // ── Provision Flutterwave VAN ──────────────────────────
+    //
+    // This gives the partner a dedicated Nigerian bank account
+    // they can wire NGN to. When funds arrive, their balance
+    // is auto-credited via the Flutterwave webhook.
+    //
+    // Runs async — don't block partner creation if FLW is slow.
+    // VAN details will be null initially, provisioned within seconds.
+    const van = await this.vanService.provisionForPartner({
+      partnerId:   partner.id,
+      partnerName: data.name,
+      email:       data.email,
+    });
+
+    if (van) {
+      this.logger.log(
+        `Partner ${partner.id} VAN: ${van.bankName} ${van.accountNumber}`,
+      );
+    } else {
+      this.logger.warn(
+        `Partner ${partner.id} VAN provisioning skipped (no FLW key or FLW error)`,
+      );
+    }
+
+    // Provision API keys
     const liveKey    = await this.authService.generateApiKey(partner.id, 'Production Key', 'live');
     const sandboxKey = await this.authService.generateApiKey(partner.id, 'Sandbox Key', 'sandbox');
 
     return {
       partner,
-      tempPassword,  // returned once — admin shares securely with the partner
+      tempPassword,
+      van,            // null in dev/sandbox if FLW not configured
       apiKeys: { live: liveKey, sandbox: sandboxKey },
     };
   }
 
-  // ── Change password ───────────────────────────────────────
-  // Verifies current password, then sets new one and clears flag.
   async changePassword(partnerId: string, currentPassword: string, newPassword: string) {
     if (newPassword.length < 8) {
       throw new BadRequestException('New password must be at least 8 characters.');
@@ -86,16 +112,17 @@ export class PartnersService {
 
     const isValid = await bcrypt.compare(currentPassword, partner.passwordHash);
     if (!isValid) throw new BadRequestException('Current password is incorrect.');
-
     if (currentPassword === newPassword) {
       throw new BadRequestException('New password must be different from the current one.');
     }
 
     await this.prisma.partner.update({
       where: { id: partnerId },
-      data:  { passwordHash: await bcrypt.hash(newPassword, 12), mustChangePassword: false },
+      data:  {
+        passwordHash:       await bcrypt.hash(newPassword, 12),
+        mustChangePassword: false,
+      },
     });
-
     return { success: true };
   }
 
@@ -104,7 +131,12 @@ export class PartnersService {
       where:   { id },
       include: { apiKeys: { where: { revokedAt: null } } },
     });
-    if (!partner) throw new NotFoundException({ code: ERROR_CODES.PARTNER_NOT_FOUND, message: `Partner ${id} not found.` });
+    if (!partner) {
+      throw new NotFoundException({
+        code:    ERROR_CODES.PARTNER_NOT_FOUND,
+        message: `Partner ${id} not found.`,
+      });
+    }
     return partner;
   }
 
@@ -119,8 +151,13 @@ export class PartnersService {
   async selfSuspend(partnerId: string) {
     const partner = await this.prisma.partner.findUnique({ where: { id: partnerId } });
     if (!partner) throw new NotFoundException('Partner not found');
-    if (partner.status === 'SUSPENDED') throw new ForbiddenException('Account is already suspended');
-    return this.prisma.partner.update({ where: { id: partnerId }, data: { status: 'SUSPENDED' } });
+    if (partner.status === 'SUSPENDED') {
+      throw new ForbiddenException('Account is already suspended');
+    }
+    return this.prisma.partner.update({
+      where: { id: partnerId },
+      data:  { status: 'SUSPENDED' },
+    });
   }
 
   async generateApiKey(partnerId: string, label: string, environment: 'live' | 'sandbox') {
@@ -130,18 +167,25 @@ export class PartnersService {
   async revokeApiKey(keyId: string, partnerId: string) {
     const key = await this.prisma.apiKey.findFirst({ where: { id: keyId, partnerId } });
     if (!key) throw new NotFoundException('API key not found');
-    return this.prisma.apiKey.update({ where: { id: keyId }, data: { revokedAt: new Date() } });
+    return this.prisma.apiKey.update({
+      where: { id: keyId },
+      data:  { revokedAt: new Date() },
+    });
   }
 
   async getStats(partnerId: string) {
     const [totalPayouts, delivered, failed, todayCount] = await Promise.all([
       this.prisma.payout.count({ where: { partnerId } }),
       this.prisma.payout.count({ where: { partnerId, status: 'DELIVERED' } }),
-      this.prisma.payout.count({ where: { partnerId, status: 'FAILED' } }),
+      this.prisma.payout.count({ where: { partnerId, status: 'FAILED'    } }),
       this.prisma.payout.count({
-        where: { partnerId, createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+        where: {
+          partnerId,
+          createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
       }),
     ]);
+
     return {
       totalPayouts,
       successfulPayouts: delivered,

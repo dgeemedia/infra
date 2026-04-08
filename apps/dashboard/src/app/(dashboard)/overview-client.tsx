@@ -5,8 +5,8 @@ import { useSession }     from 'next-auth/react';
 import {
   ArrowUpRight, CheckCircle2, XCircle, Clock,
   TrendingUp, Zap, ShieldCheck, AlertTriangle,
-  DollarSign, Users, Wallet, ArrowDownLeft,
-  ArrowUpRight as ArrowUp, RefreshCw,
+  DollarSign, Users, Wallet,
+  ArrowUpRight as ArrowUp, ArrowDownLeft, RefreshCw,
 } from 'lucide-react';
 
 import { usePayoutStats }    from '@/hooks/usePayoutStats';
@@ -18,18 +18,37 @@ import { VolumeChart }       from '@/components/charts/VolumeChart';
 import { SuccessRateChart }  from '@/components/charts/SuccessRateChart';
 import { StatusBadge }       from '@/components/transactions/StatusBadge';
 import {
-  formatNaira, formatPercent, formatNumber, formatDate, timeAgo, cn,
+  formatNaira, formatPercent, formatNumber, timeAgo, cn,
 } from '@/lib/utils';
 
 // ── Helpers ───────────────────────────────────────────────────
-function formatGbp(gbp: string | number) {
-  const n = typeof gbp === 'string' ? parseFloat(gbp) : gbp;
-  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(n);
+function formatNgn(n: string | number) {
+  const val = typeof n === 'string' ? parseFloat(n) : n;
+  return new Intl.NumberFormat('en-NG', {
+    style:                 'currency',
+    currency:              'NGN',
+    maximumFractionDigits: 0,
+  }).format(val);
 }
 
-function formatNgn(n: number) {
-  return new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(n);
-}
+// ── Ledger entry display maps ─────────────────────────────────
+const typeIcon: Record<string, React.ElementType> = {
+  CREDIT: ArrowDownLeft,
+  DEBIT:  ArrowUp,
+  REFUND: RefreshCw,
+};
+
+const typeColor: Record<string, string> = {
+  CREDIT: 'text-green-600',
+  DEBIT:  'text-red-600',
+  REFUND: 'text-amber-600',
+};
+
+const typeLabel: Record<string, string> = {
+  CREDIT: 'Credit',
+  DEBIT:  'Debit',
+  REFUND: 'Refund',
+};
 
 // ── Shared StatCard ───────────────────────────────────────────
 function StatCard({
@@ -75,31 +94,60 @@ function StatCard({
 function PartnerBalanceCard() {
   const { data, isLoading } = usePartnerBalance();
 
-  const balanceGbp  = data?.balanceGbp ?? '0.00';
-  const ledger      = data?.recentLedger ?? [];
-  const typeIcon    = { CREDIT: ArrowDownLeft, DEBIT: ArrowUp, REFUND: RefreshCw };
-  const typeColor   = { CREDIT: 'text-green-600', DEBIT: 'text-red-500', REFUND: 'text-amber-500' };
-  const typeLabel   = { CREDIT: 'Top-up', DEBIT: 'Fee', REFUND: 'Refund' };
+  const balanceNaira = data?.balanceNaira ?? '0.00';
+  const funding      = data?.fundingAccount;
+  const ledger       = data?.recentLedger ?? [];
 
   return (
     <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
+
       {/* Balance header */}
       <div className="p-5 border-b border-border bg-gradient-to-r from-primary/5 to-transparent">
         <div className="flex items-center gap-2 mb-1">
           <Wallet className="h-4 w-4 text-primary" />
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Account Balance
+            Naira wallet
           </span>
         </div>
-        {isLoading ? (
-          <div className="h-9 w-32 rounded-lg bg-muted animate-pulse mt-1" />
-        ) : (
-          <p className="text-3xl font-bold text-foreground">{formatGbp(balanceGbp)}</p>
-        )}
+        {isLoading
+          ? <div className="h-9 w-40 rounded-lg bg-muted animate-pulse mt-1" />
+          : <p className="text-3xl font-bold text-foreground">
+              ₦{Number(balanceNaira).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+            </p>
+        }
         <p className="mt-1 text-xs text-muted-foreground">
-          Prepaid balance — deducted per payout fee
+          Prepaid balance — deducted on every payout
         </p>
       </div>
+
+      {/* VAN funding instructions */}
+      {funding && (
+        <div className="p-5 border-b border-border bg-muted/30">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Fund your wallet — wire NGN to this account
+          </p>
+          {[
+            { label: 'Bank',           value: funding.bankName      },
+            { label: 'Account number', value: funding.accountNumber },
+            { label: 'Account name',   value: funding.accountName   },
+            { label: 'Reference',      value: funding.reference     },
+          ].map(({ label, value }) => (
+            <div key={label} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <div className="flex items-center gap-2">
+                <code className="text-xs font-mono text-foreground">{value}</code>
+                <button onClick={() => navigator.clipboard.writeText(value)}
+                  className="text-xs text-muted-foreground hover:text-foreground">
+                  copy
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
+            {funding.instructions[0]}
+          </div>
+        </div>
+      )}
 
       {/* Recent ledger */}
       <div className="divide-y divide-border">
@@ -134,9 +182,9 @@ function PartnerBalanceCard() {
               </div>
               <div className="text-right shrink-0">
                 <p className={cn('text-sm font-medium', color)}>
-                  {entry.type === 'DEBIT' ? '−' : '+'}{formatGbp(entry.amountGbp)}
+                  {entry.type === 'DEBIT' ? '−' : '+'}{formatNgn(entry.amountNaira)}
                 </p>
-                <p className="text-xs text-muted-foreground">bal {formatGbp(entry.balanceAfterGbp)}</p>
+                <p className="text-xs text-muted-foreground">bal {formatNgn(entry.balanceAfterNaira)}</p>
               </div>
               <span className={cn(
                 'shrink-0 self-center rounded-full px-1.5 py-0.5 text-[10px] font-medium',
@@ -157,9 +205,9 @@ function PartnerBalanceCard() {
 // ── Admin balances panel ──────────────────────────────────────
 function AdminBalancesPanel() {
   const { data, isLoading } = useAdminBalances();
-  const partners   = data?.partners            ?? [];
-  const flw        = data?.flutterwaveBalance;
-  const totalGbp   = data?.totalBalanceGbp     ?? '0.00';
+  const partners  = data?.partners           ?? [];
+  const flw       = data?.flutterwaveBalance;
+  const totalNaira = data?.totalNaira        ?? '₦0';
 
   return (
     <div className="space-y-4">
@@ -174,9 +222,9 @@ function AdminBalancesPanel() {
           </div>
           {isLoading
             ? <div className="h-8 w-28 rounded bg-muted animate-pulse" />
-            : <p className="text-2xl font-bold text-foreground">{formatGbp(totalGbp)}</p>
+            : <p className="text-2xl font-bold text-foreground">{totalNaira}</p>
           }
-          <p className="mt-1 text-xs text-muted-foreground">Sum of all prefunded partner accounts</p>
+          <p className="mt-1 text-xs text-muted-foreground">Sum of all prefunded Naira wallets</p>
         </div>
 
         <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
@@ -213,7 +261,7 @@ function AdminBalancesPanel() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {['Partner', 'Country', 'Status', 'Balance (GBP)', 'Last Top-up', 'Action'].map((h) => (
+                {['Partner', 'Country', 'Status', 'Balance (NGN)', 'Last Top-up', 'Action'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">
                     {h}
                   </th>
@@ -241,7 +289,7 @@ function AdminBalancesPanel() {
                   <td className="px-4 py-3">
                     <span className={cn(
                       'rounded-full px-2 py-0.5 text-xs font-medium',
-                      p.status === 'ACTIVE'         ? 'bg-green-100 text-green-700'
+                      p.status === 'ACTIVE'           ? 'bg-green-100 text-green-700'
                       : p.status === 'PENDING_REVIEW' ? 'bg-yellow-100 text-yellow-700'
                       : 'bg-red-100 text-red-700',
                     )}>
@@ -251,9 +299,9 @@ function AdminBalancesPanel() {
                   <td className="px-4 py-3">
                     <span className={cn(
                       'font-semibold tabular-nums',
-                      p.balancePence <= 0 ? 'text-red-600' : 'text-foreground',
+                      p.balanceKobo <= 0 ? 'text-red-600' : 'text-foreground',
                     )}>
-                      {formatGbp(p.balanceGbp)}
+                      {p.balanceNaira}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
@@ -267,7 +315,7 @@ function AdminBalancesPanel() {
                       href={`/admin/partners/${p.id}`}
                       className="rounded-lg px-2 py-1 text-xs text-primary hover:bg-primary/10 transition-colors"
                     >
-                      Top up →
+                      View →
                     </a>
                   </td>
                 </tr>
@@ -308,9 +356,9 @@ function AdminOverview() {
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Partners</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard label="Total Partners"  value={isLoading ? '—' : formatNumber(stats?.totalPartners  ?? 0)} sub="All registered" icon={Users}        color="blue"   />
-          <StatCard label="Active Partners" value={isLoading ? '—' : formatNumber(stats?.activePartners ?? 0)}                     icon={CheckCircle2}   color="green"  />
-          <StatCard label="Suspended"       value={isLoading ? '—' : formatNumber((stats?.totalPartners ?? 0) - (stats?.activePartners ?? 0))}             icon={XCircle} color="red"    />
+          <StatCard label="Total Partners"  value={isLoading ? '—' : formatNumber(stats?.totalPartners  ?? 0)} sub="All registered" icon={Users}       color="blue"  />
+          <StatCard label="Active Partners" value={isLoading ? '—' : formatNumber(stats?.activePartners ?? 0)}                     icon={CheckCircle2}  color="green" />
+          <StatCard label="Suspended"       value={isLoading ? '—' : formatNumber((stats?.totalPartners ?? 0) - (stats?.activePartners ?? 0))} icon={XCircle} color="red" />
         </div>
       </div>
 
@@ -318,10 +366,10 @@ function AdminOverview() {
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Payouts</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total Payouts" value={isLoading ? '—' : formatNumber(stats?.totalPayouts    ?? 0)} sub="All time"      icon={Zap}          color="blue"  />
+          <StatCard label="Total Payouts" value={isLoading ? '—' : formatNumber(stats?.totalPayouts     ?? 0)} sub="All time"     icon={Zap}           color="blue"  />
           <StatCard label="Delivered"     value={isLoading ? '—' : formatNumber(stats?.deliveredPayouts ?? 0)} trend={isLoading ? undefined : `${formatPercent(stats?.successRate ?? 0)} rate`} icon={CheckCircle2} color="green" />
-          <StatCard label="Failed"        value={isLoading ? '—' : formatNumber(stats?.failedPayouts   ?? 0)}                     icon={XCircle}      color="red"   />
-          <StatCard label="Flagged"       value={isLoading ? '—' : formatNumber(stats?.flaggedPayouts  ?? 0)} sub="Needs review"  icon={AlertTriangle} color="amber" />
+          <StatCard label="Failed"        value={isLoading ? '—' : formatNumber(stats?.failedPayouts    ?? 0)}                    icon={XCircle}       color="red"   />
+          <StatCard label="Flagged"       value={isLoading ? '—' : formatNumber(stats?.flaggedPayouts   ?? 0)} sub="Needs review" icon={AlertTriangle}  color="amber" />
         </div>
       </div>
 
@@ -334,7 +382,7 @@ function AdminOverview() {
         </div>
       </div>
 
-      {/* Balances — partner accounts + Flutterwave */}
+      {/* Balances */}
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Balances</p>
         <AdminBalancesPanel />
@@ -378,10 +426,10 @@ function PartnerOverview({ partnerId }: { partnerId: string }) {
 
       {/* Payout stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total Payouts" value={statsLoading ? '—' : formatNumber(stats?.totalPayouts      ?? 0)} sub="All time"             icon={Zap}          color="blue"  />
-        <StatCard label="Delivered"     value={statsLoading ? '—' : formatNumber(stats?.successfulPayouts ?? 0)} sub="Successfully credited" icon={CheckCircle2} color="green" trend={statsLoading ? undefined : `${formatPercent(stats?.successRate ?? 0)} rate`} />
-        <StatCard label="Failed"        value={statsLoading ? '—' : formatNumber(stats?.failedPayouts     ?? 0)} sub="Requires attention"    icon={XCircle}      color="red"   />
-        <StatCard label="Today"         value={statsLoading ? '—' : formatNumber(stats?.todayPayouts      ?? 0)} sub="Payouts initiated today" icon={Clock}       color="amber" />
+        <StatCard label="Total Payouts" value={statsLoading ? '—' : formatNumber(stats?.totalPayouts      ?? 0)} sub="All time"              icon={Zap}          color="blue"  />
+        <StatCard label="Delivered"     value={statsLoading ? '—' : formatNumber(stats?.successfulPayouts ?? 0)} sub="Successfully credited"  icon={CheckCircle2} color="green" trend={statsLoading ? undefined : `${formatPercent(stats?.successRate ?? 0)} rate`} />
+        <StatCard label="Failed"        value={statsLoading ? '—' : formatNumber(stats?.failedPayouts     ?? 0)} sub="Requires attention"     icon={XCircle}      color="red"   />
+        <StatCard label="Today"         value={statsLoading ? '—' : formatNumber(stats?.todayPayouts      ?? 0)} sub="Payouts initiated today" icon={Clock}        color="amber" />
       </div>
 
       {/* Charts */}

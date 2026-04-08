@@ -17,7 +17,7 @@ import {
   Building2, Copy, CheckCircle2, Info,
   Loader2, DollarSign, Wallet, RefreshCw,
 } from 'lucide-react';
-import { cn, formatDate } from '@/lib/utils';
+import { cn, timeAgo } from '@/lib/utils';
 import { getErrorMessage } from '@/lib/api';
 
 // ── Copy button ───────────────────────────────────────────────
@@ -53,8 +53,6 @@ function DetailRow({ label, value }: { label: string; value?: string }) {
 }
 
 // ── Currency section ──────────────────────────────────────────
-// Renders whatever key/value pairs the env has for that currency.
-// Completely provider-agnostic — no currency-specific if statements.
 const FIELD_LABELS: Record<string, string> = {
   accountName:        'Account name',
   accountNumber:      'Account number',
@@ -93,19 +91,22 @@ function CurrencySection({ code, data }: { code: string; data: Record<string, st
 }
 
 // ── Top-up modal ──────────────────────────────────────────────
+// Partners fund their Naira wallet via their VAN automatically.
+// This manual top-up is a fallback for admin-confirmed transfers.
 function TopUpModal({ partnerId, partnerName, onClose }: {
   partnerId:   string;
   partnerName: string;
   onClose:     () => void;
 }) {
-  const [amountGbp,   setAmountGbp]   = useState('');
+  const [amountNaira, setAmountNaira] = useState('');
   const [description, setDescription] = useState('');
   const topUp = useTopUpPartnerBalance();
 
   async function handleSubmit() {
-    const pence = Math.round(parseFloat(amountGbp) * 100);
-    if (!pence || !description.trim()) return;
-    await topUp.mutateAsync({ partnerId, amountPence: pence, description });
+    // Convert Naira input → kobo (integer, avoids float drift)
+    const kobo = Math.round(parseFloat(amountNaira) * 100);
+    if (!kobo || !description.trim()) return;
+    await topUp.mutateAsync({ partnerId, amountKobo: kobo, description });
     onClose();
   }
 
@@ -113,25 +114,32 @@ function TopUpModal({ partnerId, partnerName, onClose }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Top up balance</h2>
+          <h2 className="text-base font-semibold text-foreground">Top up Naira wallet</h2>
           <p className="text-sm text-muted-foreground mt-0.5">{partnerName}</p>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Amount (GBP)</label>
+            <label className="block text-sm font-medium text-foreground mb-1.5">Amount (NGN)</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">£</span>
-              <input type="number" min="1" step="0.01" value={amountGbp}
-                onChange={(e) => setAmountGbp(e.target.value)} placeholder="100.00"
-                className="w-full rounded-lg border border-input bg-background pl-7 pr-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">₦</span>
+              <input
+                type="number" min="1" step="0.01"
+                value={amountNaira}
+                onChange={(e) => setAmountNaira(e.target.value)}
+                placeholder="50000.00"
+                className="w-full rounded-lg border border-input bg-background pl-7 pr-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
             </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-foreground mb-1.5">Payment reference / note</label>
-            <input type="text" value={description}
+            <input
+              type="text"
+              value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Wise TW-REF-12345 received 2026-04-05"
-              className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+              placeholder="Manual NGN transfer confirmed 2026-04-08"
+              className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
           </div>
           {topUp.isError && (
             <p className="text-sm text-destructive">{getErrorMessage(topUp.error)}</p>
@@ -142,8 +150,9 @@ function TopUpModal({ partnerId, partnerName, onClose }: {
             className="flex-1 rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted transition-colors">
             Cancel
           </button>
-          <button onClick={handleSubmit}
-            disabled={topUp.isPending || !amountGbp || !description.trim()}
+          <button
+            onClick={handleSubmit}
+            disabled={topUp.isPending || !amountNaira || !description.trim()}
             className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
             {topUp.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Confirm credit
@@ -156,8 +165,8 @@ function TopUpModal({ partnerId, partnerName, onClose }: {
 
 // ── Main settings content ─────────────────────────────────────
 function AdminSettingsContent() {
-  const { data: account,  isLoading: acctLoading  } = useReceivingAccount();
-  const { data: balances, isLoading: balsLoading  } = useAdminBalances();
+  const { data: account,  isLoading: acctLoading } = useReceivingAccount();
+  const { data: balances, isLoading: balsLoading } = useAdminBalances();
   const [topUpTarget, setTopUpTarget] = useState<{ id: string; name: string } | null>(null);
 
   const currencies = account
@@ -201,8 +210,8 @@ function AdminSettingsContent() {
           <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
           <p className="text-sm text-amber-800">
             These details come from your server <code className="font-mono text-xs">.env</code> file.
-            To update them or switch providers, edit <code className="font-mono text-xs">.env</code> and redeploy — no code changes needed.
-            Copy the relevant currency block into each partner's top-up instruction email.
+            Partners fund their Naira wallet automatically via their dedicated VAN.
+            Use this page only for manual top-ups when a VAN transfer needs to be confirmed manually.
           </p>
         </div>
 
@@ -220,7 +229,8 @@ function AdminSettingsContent() {
             <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
             <p className="text-sm font-medium text-foreground">No account details configured</p>
             <p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto">
-              Fill in the <code className="font-mono text-xs">RECEIVING_*</code> variables in your <code className="font-mono text-xs">.env</code> file and redeploy.
+              Fill in the <code className="font-mono text-xs">RECEIVING_*</code> variables in your{' '}
+              <code className="font-mono text-xs">.env</code> file and redeploy.
             </p>
           </div>
         )}
@@ -234,11 +244,11 @@ function AdminSettingsContent() {
         )}
       </div>
 
-      {/* ── Section 2: Partner balances + top-up ───────────── */}
+      {/* ── Section 2: Partner Naira balances + manual top-up ── */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">
           <Wallet className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">Partner Balances</h2>
+          <h2 className="text-lg font-semibold text-foreground">Partner Naira Balances</h2>
         </div>
 
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -246,7 +256,7 @@ function AdminSettingsContent() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  {['Partner', 'Balance (GBP)', 'Last top-up', 'Top up'].map((h) => (
+                  {['Partner', 'Balance (NGN)', 'Last top-up', 'Manual top-up'].map((h) => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -256,7 +266,7 @@ function AdminSettingsContent() {
               <tbody>
                 {balsLoading && Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i} className="border-b border-border">
-                    {[0,1,2,3].map((j) => (
+                    {[0, 1, 2, 3].map((j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 rounded bg-muted animate-pulse" />
                       </td>
@@ -273,14 +283,20 @@ function AdminSettingsContent() {
                     <td className="px-4 py-3">
                       <span className={cn(
                         'font-semibold tabular-nums',
-                        p.balancePence <= 0 ? 'text-red-600' : 'text-foreground',
+                        p.balanceKobo <= 0 ? 'text-red-600' : 'text-foreground',
                       )}>
-                        £{p.balanceGbp}
+                        {p.balanceNaira}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {p.lastTopUp
-                        ? <>£{(p.lastTopUp.amountPence / 100).toFixed(2)} — {p.lastTopUp.description.slice(0, 30)}</>
+                        ? (
+                          <>
+                            ₦{(p.lastTopUp.amountKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                            {' · '}
+                            {timeAgo(p.lastTopUp.createdAt)}
+                          </>
+                        )
                         : <span className="italic">Never</span>
                       }
                     </td>
