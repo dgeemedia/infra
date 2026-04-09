@@ -29,7 +29,7 @@ export class WebhooksService {
     });
     if (!payout) return;
 
-    // ── Create an in-app notification for the partner ──────────────
+    // ── In-app notification ────────────────────────────────────────
     const notifMap: Record<WebhookEventType, { title: string; body: string } | null> = {
       'payout.delivered': {
         title: 'Payout Delivered',
@@ -43,7 +43,7 @@ export class WebhooksService {
         title: 'Payout Flagged',
         body:  `${payout.partnerReference} is on hold pending compliance review.`,
       },
-      'payout.processing': null, // not noisy enough to warrant a notification
+      'payout.processing': null,
     };
 
     const notif = notifMap[event];
@@ -62,7 +62,7 @@ export class WebhooksService {
       );
     }
 
-    // ── Deliver to all subscribed webhook endpoints ─────────────────
+    // ── Deliver to subscribed webhook endpoints ─────────────────────
     const webhooks = await this.prisma.webhookConfig.findMany({
       where: {
         partnerId: payout.partnerId,
@@ -91,7 +91,8 @@ export class WebhooksService {
       partnerReference: string;
       status:           string;
       partnerId:        string;
-      nairaAmount:      unknown;
+      // New kobo-based field — convert to NGN decimal for the webhook payload
+      nairaAmountKobo:  number;
       deliveredAt:      Date | null;
       failureReason:    string | null;
     },
@@ -108,7 +109,7 @@ export class WebhooksService {
       payoutId:         payout.id,
       partnerReference: payout.partnerReference,
       status:           payout.status,
-      nairaAmount:      Number(payout.nairaAmount),
+      nairaAmount:      payout.nairaAmountKobo / 100,  // convert kobo → NGN decimal for partners
       deliveredAt:      payout.deliveredAt?.toISOString(),
       failureReason:    payout.failureReason ?? undefined,
       timestamp,
@@ -151,9 +152,7 @@ export class WebhooksService {
 
       this.logger.log(`Webhook delivered: ${event} → ${url} [${response.status}]`);
     } catch (error) {
-      const statusCode = axios.isAxiosError(error)
-        ? (error.response?.status ?? 0)
-        : 0;
+      const statusCode = axios.isAxiosError(error) ? (error.response?.status ?? 0) : 0;
 
       await this.prisma.webhookDelivery.update({
         where: { id: delivery.id },
@@ -169,7 +168,6 @@ export class WebhooksService {
 
       this.logger.warn(`Webhook delivery failed: ${event} → ${url} [${statusCode}]`);
 
-      // Notify the partner so they can investigate
       await this.notifications.create(
         payout.partnerId,
         'WEBHOOK_FAILED',
@@ -186,12 +184,10 @@ export class WebhooksService {
     url:       string,
     events:    WebhookEventType[],
   ): Promise<{ id: string; secret: string }> {
-    const secret = crypto.randomBytes(32).toString('hex');
-
+    const secret  = crypto.randomBytes(32).toString('hex');
     const webhook = await this.prisma.webhookConfig.create({
       data: { partnerId, url, events, secret, isActive: true },
     });
-
     return { id: webhook.id, secret };
   }
 

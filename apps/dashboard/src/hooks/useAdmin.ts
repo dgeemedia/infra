@@ -5,14 +5,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
 // ── Unwrap helper ─────────────────────────────────────────────
-//
-// TransformInterceptor wraps every response as:
-//   { success: true, data: <payload>, timestamp: "..." }
-//
-// Axios puts the HTTP body in .data, so the full chain is:
-//   res.data       → { success, data: <payload>, timestamp }
-//   res.data.data  → <payload>  ✅
-//
 function unwrap<T>(res: { data: { success: boolean; data: T; timestamp: string } }): T {
   return res.data.data;
 }
@@ -26,8 +18,10 @@ export interface AdminStats {
   failedPayouts:      number;
   flaggedPayouts:     number;
   successRate:        number;
-  totalVolumeNaira:   number;
-  totalFeesCollected: number;
+  totalVolumeKobo:    number;
+  totalVolumeNaira:   string;
+  totalFeesKobo:      number;
+  totalFeesNaira:     string;
   flutterwaveBalance: { currency: string; available: number; ledger: number } | null;
 }
 
@@ -50,7 +44,7 @@ export interface AdminBalancePartner {
   country:      string;
   status:       string;
   balanceKobo:  number;
-  balanceNaira: string;   // formatted "₦X,XXX.XX" from API
+  balanceNaira: string;
   lastTopUp:    { createdAt: string; amountKobo: number; description: string } | null;
 }
 
@@ -131,43 +125,22 @@ export function usePartnerBalanceLedger(partnerId: string, page = 1) {
   });
 }
 
-// ── Receiving account details ─────────────────────────────────
-export interface ReceivingAccount {
-  provider: string;
-  gbp:      Record<string, string>;
-  usd:      Record<string, string>;
-  eur:      Record<string, string>;
-  cad:      Record<string, string>;
-}
-
-export function useReceivingAccount() {
-  return useQuery({
-    queryKey: ['admin', 'receiving-account'],
-    queryFn:  async () => unwrap(
-      await api.get<{ success: boolean; data: ReceivingAccount | null; timestamp: string }>(
-        '/v1/admin/receiving-account',
-      ),
-    ),
-    staleTime: Infinity,
-  });
-}
-
 // ── All partners ──────────────────────────────────────────────
 export interface AdminPartner {
-  id:                    string;
-  name:                  string;
-  email:                 string;
-  country:               string;
-  status:                string;
-  createdAt:             string;
-  activeApiKeys:         number;
-  totalPayouts:          number;
-  activeWebhooks:        number;
-  deliveredVolumeKobo:   number;
-  deliveredVolumeNaira:  string;
-  deliveredCount:        number;
-  balanceKobo:           number;
-  balanceNaira:          string;
+  id:                   string;
+  name:                 string;
+  email:                string;
+  country:              string;
+  status:               string;
+  createdAt:            string;
+  activeApiKeys:        number;
+  totalPayouts:         number;
+  activeWebhooks:       number;
+  deliveredVolumeKobo:  number;
+  deliveredVolumeNaira: string;
+  deliveredCount:       number;
+  balanceKobo:          number;
+  balanceNaira:         string;
 }
 
 export function useAdminPartners() {
@@ -180,7 +153,7 @@ export function useAdminPartners() {
   });
 }
 
-// ── Suspend partner ───────────────────────────────────────────
+// ── Suspend / activate partner ────────────────────────────────
 export function useSuspendPartner() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -193,7 +166,6 @@ export function useSuspendPartner() {
   });
 }
 
-// ── Activate partner ──────────────────────────────────────────
 export function useActivatePartner() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -211,8 +183,9 @@ export interface AdminTransaction {
   id:               string;
   partnerId:        string;
   partnerReference: string;
-  nairaAmount:      number;
-  fee:              number;
+  nairaAmountKobo:  number;
+  feeKobo:          number;
+  narration:        string | null;
   status:           string;
   createdAt:        string;
   deliveredAt:      string | null;
@@ -262,7 +235,9 @@ export interface FlaggedPayout {
   id:               string;
   partnerId:        string;
   partnerReference: string;
-  nairaAmount:      number;
+  nairaAmountKobo:  number;
+  feeKobo:          number;
+  narration:        string | null;
   failureReason:    string | null;
   createdAt:        string;
   partner:          { id: string; name: string; email: string };
@@ -335,5 +310,22 @@ export function useAdminInbox(page = 1) {
     ),
     staleTime:       30_000,
     refetchInterval: 60_000,
+  });
+}
+
+export interface ReceivingAccount {
+  provider: string;
+  [currency: string]: Record<string, string> | string;
+}
+
+export function useReceivingAccount() {
+  return useQuery({
+    queryKey: ['admin', 'receiving-account'],
+    queryFn:  async () => unwrap(
+      await api.get<{ success: boolean; data: ReceivingAccount; timestamp: string }>(
+        '/v1/admin/receiving-account',
+      ),
+    ),
+    staleTime: 300_000,
   });
 }

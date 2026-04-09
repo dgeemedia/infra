@@ -1,5 +1,6 @@
 // apps/api/src/modules/notifications/notifications.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable }  from '@nestjs/common';
+import { Prisma }      from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 export type NotificationType =
@@ -9,6 +10,8 @@ export type NotificationType =
   | 'WEBHOOK_FAILED'
   | 'API_KEY_CREATED'
   | 'ACCOUNT_SUSPENDED'
+  | 'BALANCE_LOW'
+  | 'BALANCE_CREDITED'
   | 'SYSTEM';
 
 @Injectable()
@@ -24,7 +27,15 @@ export class NotificationsService {
     metadata?: Record<string, unknown>,
   ) {
     return this.prisma.notification.create({
-      data: { partnerId, type, title, body, metadata, read: false },
+      data: {
+        partnerId,
+        type,
+        title,
+        body,
+        // Cast to Prisma's Json input type to satisfy strict type checking
+        metadata: (metadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+        read:     false,
+      },
     });
   }
 
@@ -45,7 +56,6 @@ export class NotificationsService {
 
   // ── Mark a single notification as read ────────────────────────────
   async markRead(partnerId: string, notificationId: string) {
-    // Ensure the notification belongs to this partner
     return this.prisma.notification.updateMany({
       where: { id: notificationId, partnerId },
       data:  { read: true },

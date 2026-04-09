@@ -1,345 +1,203 @@
 'use client';
 
-// apps/dashboard/src/app/(dashboard)/admin/settings/page.tsx
-//
-// Reads your receiving account details from the API (which reads .env).
-// No hardcoded provider name or fields — works for Wise, Airwallex,
-// Mercury, Payoneer, or anything else. Swap provider by updating .env.
-
-import { useState }   from 'react';
-import { AdminGuard } from '@/components/admin/AdminGuard';
+// apps/dashboard/src/app/(dashboard)/admin/transactions/page.tsx
+import { useState }             from 'react';
+import { AdminGuard }           from '@/components/admin/AdminGuard';
+import { useAdminTransactions, AdminTransaction } from '@/hooks/useAdmin';
+import { useAdminPartners }     from '@/hooks/useAdmin';
+import { StatusBadge }          from '@/components/transactions/StatusBadge';
 import {
-  useReceivingAccount,
-  useAdminBalances,
-  useTopUpPartnerBalance,
-} from '@/hooks/useAdmin';
-import {
-  Building2, Copy, CheckCircle2, Info,
-  Loader2, DollarSign, Wallet, RefreshCw,
-} from 'lucide-react';
-import { cn, timeAgo } from '@/lib/utils';
-import { getErrorMessage } from '@/lib/api';
+  formatNaira, formatDate, truncateId, cn,
+} from '@/lib/utils';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
-// ── Copy button ───────────────────────────────────────────────
-function CopyButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  async function handleCopy() {
-    if (!value?.trim()) return;
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-  return (
-    <button onClick={handleCopy} disabled={!value?.trim()}
-      className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-30"
-      title="Copy">
-      {copied ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-    </button>
-  );
-}
+const STATUSES = ['', 'PENDING', 'PROCESSING', 'DELIVERED', 'FAILED', 'FLAGGED'];
 
-// ── Account detail row ────────────────────────────────────────
-function DetailRow({ label, value }: { label: string; value?: string }) {
-  if (!value) return null;
-  return (
-    <div className="flex items-center gap-3 py-2.5 border-b border-border last:border-0">
-      <span className="w-40 shrink-0 text-xs text-muted-foreground">{label}</span>
-      <div className="flex flex-1 items-center gap-1 min-w-0">
-        <code className="flex-1 text-sm font-mono text-foreground truncate">{value}</code>
-        <CopyButton value={value} />
-      </div>
-    </div>
-  );
-}
+function TransactionsContent() {
+  const [page,      setPage]      = useState(1);
+  const [status,    setStatus]    = useState('');
+  const [partnerId, setPartnerId] = useState('');
+  const [search,    setSearch]    = useState('');
 
-// ── Currency section ──────────────────────────────────────────
-const FIELD_LABELS: Record<string, string> = {
-  accountName:        'Account name',
-  accountNumber:      'Account number',
-  sortCode:           'Sort code',
-  achRouting:         'ACH routing',
-  wireRouting:        'Wire routing',
-  swiftBic:           'SWIFT / BIC',
-  iban:               'IBAN',
-  institutionNumber:  'Institution number',
-  transitNumber:      'Transit number',
-};
+  const { data: partners } = useAdminPartners();
 
-const CURRENCY_META: Record<string, { flag: string; label: string }> = {
-  gbp: { flag: '🇬🇧', label: 'GBP' },
-  usd: { flag: '🇺🇸', label: 'USD' },
-  eur: { flag: '🇪🇺', label: 'EUR' },
-  cad: { flag: '🇨🇦', label: 'CAD' },
-};
+  const { data, isLoading } = useAdminTransactions({
+    page,
+    pageSize: 20,
+    status:    status    || undefined,
+    partnerId: partnerId || undefined,
+  });
 
-function CurrencySection({ code, data }: { code: string; data: Record<string, string> }) {
-  const meta   = CURRENCY_META[code] ?? { flag: '🌐', label: code.toUpperCase() };
-  const fields = Object.entries(data).filter(([, v]) => v);
-  if (fields.length === 0) return null;
+  const payouts = data?.data ?? [];
 
-  return (
-    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-center gap-2 mb-4">
-        <span className="text-lg">{meta.flag}</span>
-        <h3 className="text-sm font-semibold text-foreground">{meta.label} account</h3>
-      </div>
-      {fields.map(([key, value]) => (
-        <DetailRow key={key} label={FIELD_LABELS[key] ?? key} value={value} />
-      ))}
-    </div>
-  );
-}
+  // Client-side reference search (API-side search can be added later)
+  const filtered = search.trim()
+    ? payouts.filter((p: AdminTransaction) =>
+        p.partnerReference.toLowerCase().includes(search.toLowerCase()),
+      )
+    : payouts;
 
-// ── Top-up modal ──────────────────────────────────────────────
-// Partners fund their Naira wallet via their VAN automatically.
-// This manual top-up is a fallback for admin-confirmed transfers.
-function TopUpModal({ partnerId, partnerName, onClose }: {
-  partnerId:   string;
-  partnerName: string;
-  onClose:     () => void;
-}) {
-  const [amountNaira, setAmountNaira] = useState('');
-  const [description, setDescription] = useState('');
-  const topUp = useTopUpPartnerBalance();
-
-  async function handleSubmit() {
-    // Convert Naira input → kobo (integer, avoids float drift)
-    const kobo = Math.round(parseFloat(amountNaira) * 100);
-    if (!kobo || !description.trim()) return;
-    await topUp.mutateAsync({ partnerId, amountKobo: kobo, description });
-    onClose();
+  function resetFilters() {
+    setStatus('');
+    setPartnerId('');
+    setSearch('');
+    setPage(1);
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-card p-6 shadow-xl space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Top up Naira wallet</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{partnerName}</p>
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">All Transactions</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Every payout across all partners
+        </p>
+      </div>
+
+      {/* ── Filters ─────────────────────────────────── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
+        {/* Reference search */}
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search reference…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          />
         </div>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Amount (NGN)</label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">₦</span>
-              <input
-                type="number" min="1" step="0.01"
-                value={amountNaira}
-                onChange={(e) => setAmountNaira(e.target.value)}
-                placeholder="50000.00"
-                className="w-full rounded-lg border border-input bg-background pl-7 pr-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">Payment reference / note</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Manual NGN transfer confirmed 2026-04-08"
-              className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
-          {topUp.isError && (
-            <p className="text-sm text-destructive">{getErrorMessage(topUp.error)}</p>
-          )}
-        </div>
-        <div className="flex gap-3 pt-1">
-          <button onClick={onClose}
-            className="flex-1 rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted transition-colors">
-            Cancel
-          </button>
+
+        {/* Partner filter */}
+        <select
+          value={partnerId}
+          onChange={(e) => { setPartnerId(e.target.value); setPage(1); }}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">All partners</option>
+          {(partners ?? []).map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+
+        {/* Status filter */}
+        <select
+          value={status}
+          onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+          className="rounded-lg border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>{s || 'All statuses'}</option>
+          ))}
+        </select>
+
+        {/* Clear filters */}
+        {(status || partnerId || search) && (
           <button
-            onClick={handleSubmit}
-            disabled={topUp.isPending || !amountNaira || !description.trim()}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-            {topUp.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Confirm credit
+            onClick={resetFilters}
+            className="rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+          >
+            Clear filters
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main settings content ─────────────────────────────────────
-function AdminSettingsContent() {
-  const { data: account,  isLoading: acctLoading } = useReceivingAccount();
-  const { data: balances, isLoading: balsLoading } = useAdminBalances();
-  const [topUpTarget, setTopUpTarget] = useState<{ id: string; name: string } | null>(null);
-
-  const currencies = account
-    ? Object.entries(account).filter(([k]) => k !== 'provider') as [string, Record<string, string>][]
-    : [];
-
-  const hasCurrencies = currencies.some(([, data]) =>
-    Object.values(data).some((v) => v),
-  );
-
-  return (
-    <div className="space-y-8 max-w-3xl">
-
-      {/* ── Section 1: Receiving account ───────────────────── */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <Building2 className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Admin Settings</h1>
-            <p className="text-sm text-muted-foreground">
-              Receiving account · Partner balances · Top-ups
-            </p>
-          </div>
-        </div>
-
-        {/* Provider badge */}
-        {acctLoading ? (
-          <div className="h-8 w-40 rounded bg-muted animate-pulse" />
-        ) : account?.provider ? (
-          <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-1.5">
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">Provider: {account.provider}</span>
-            <span className="text-xs text-muted-foreground">· set via RECEIVING_PROVIDER in .env</span>
-          </div>
-        ) : null}
-
-        {/* Info banner */}
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-          <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-sm text-amber-800">
-            These details come from your server <code className="font-mono text-xs">.env</code> file.
-            Partners fund their Naira wallet automatically via their dedicated VAN.
-            Use this page only for manual top-ups when a VAN transfer needs to be confirmed manually.
-          </p>
-        </div>
-
-        {/* Currency cards */}
-        {acctLoading && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-40 rounded-xl bg-muted animate-pulse" />
-            ))}
-          </div>
-        )}
-
-        {!acctLoading && !hasCurrencies && (
-          <div className="rounded-xl border border-dashed border-border p-10 text-center">
-            <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm font-medium text-foreground">No account details configured</p>
-            <p className="mt-1 text-xs text-muted-foreground max-w-xs mx-auto">
-              Fill in the <code className="font-mono text-xs">RECEIVING_*</code> variables in your{' '}
-              <code className="font-mono text-xs">.env</code> file and redeploy.
-            </p>
-          </div>
-        )}
-
-        {!acctLoading && hasCurrencies && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {currencies.map(([code, data]) => (
-              <CurrencySection key={code} code={code} data={data} />
-            ))}
-          </div>
         )}
       </div>
 
-      {/* ── Section 2: Partner Naira balances + manual top-up ── */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <Wallet className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">Partner Naira Balances</h2>
-        </div>
-
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  {['Partner', 'Balance (NGN)', 'Last top-up', 'Manual top-up'].map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                      {h}
-                    </th>
+      {/* ── Table ───────────────────────────────────── */}
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/30">
+                {['Reference', 'Partner', 'Recipient', 'Status', 'Amount', 'Created', 'Delivered'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-b border-border">
+                  {Array.from({ length: 7 }).map((_, j) => (
+                    <td key={j} className="px-4 py-3">
+                      <div className="h-4 rounded bg-muted animate-pulse" />
+                    </td>
                   ))}
                 </tr>
-              </thead>
-              <tbody>
-                {balsLoading && Array.from({ length: 4 }).map((_, i) => (
-                  <tr key={i} className="border-b border-border">
-                    {[0, 1, 2, 3].map((j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 rounded bg-muted animate-pulse" />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+              ))}
 
-                {!balsLoading && (balances?.partners ?? []).map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">{p.email}</p>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        'font-semibold tabular-nums',
-                        p.balanceKobo <= 0 ? 'text-red-600' : 'text-foreground',
-                      )}>
-                        {p.balanceNaira}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {p.lastTopUp
-                        ? (
-                          <>
-                            ₦{(p.lastTopUp.amountKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
-                            {' · '}
-                            {timeAgo(p.lastTopUp.createdAt)}
-                          </>
-                        )
-                        : <span className="italic">Never</span>
-                      }
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setTopUpTarget({ id: p.id, name: p.name })}
-                        className="flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
-                        <RefreshCw className="h-3 w-3" />
-                        Top up
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+              {!isLoading && filtered.map((payout: AdminTransaction) => (
+                <tr key={payout.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                  <td className="px-4 py-3 font-mono text-xs">
+                    {truncateId(payout.partnerReference)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-xs font-medium text-foreground">{payout.partner.name}</p>
+                    <p className="text-[10px] text-muted-foreground">{payout.partner.email}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-xs text-foreground">{payout.recipient?.fullName ?? '—'}</p>
+                    <p className="text-[10px] text-muted-foreground">{payout.recipient?.bankName ?? ''}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={payout.status} />
+                  </td>
+                  <td className="px-4 py-3 font-medium text-foreground text-xs">
+                    {formatNaira(payout.nairaAmountKobo / 100)}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {formatDate(payout.createdAt)}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                    {payout.deliveredAt ? formatDate(payout.deliveredAt) : '—'}
+                  </td>
+                </tr>
+              ))}
 
-                {!balsLoading && (balances?.partners ?? []).length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                      No partners yet.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              {!isLoading && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                    No transactions found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      </div>
 
-      {/* Top-up modal */}
-      {topUpTarget && (
-        <TopUpModal
-          partnerId={topUpTarget.id}
-          partnerName={topUpTarget.name}
-          onClose={() => setTopUpTarget(null)}
-        />
-      )}
+        {/* Pagination */}
+        {data && data.totalPages > 1 && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3">
+            <p className="text-xs text-muted-foreground">
+              {data.total} total transactions
+            </p>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40 transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="px-3 text-sm">{page} / {data.totalPages}</span>
+              <button
+                onClick={() => setPage((p) => Math.min(data.totalPages, p + 1))}
+                disabled={page === data.totalPages}
+                className="rounded-lg p-1.5 hover:bg-muted disabled:opacity-40 transition-colors"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-export default function AdminSettingsPage() {
+export default function AdminTransactionsPage() {
   return (
     <AdminGuard>
-      <AdminSettingsContent />
+      <TransactionsContent />
     </AdminGuard>
   );
 }

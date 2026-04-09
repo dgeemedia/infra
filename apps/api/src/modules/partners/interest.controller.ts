@@ -7,24 +7,37 @@ import {
   IsEmail, IsString, IsUrl, Length, IsOptional,
 } from 'class-validator';
 
-import { Public }           from '../../common/decorators/public.decorator';
-import { PrismaService }    from '../../database/prisma.service';
+import { Public }        from '../../common/decorators/public.decorator';
+import { PrismaService } from '../../database/prisma.service';
 
 class ExpressionOfInterestDto {
-  @IsString() @Length(2, 100) companyName!:  string;
-  @IsEmail()                  email!:        string;
-  @IsString() @Length(2, 2)   country!:      string;
+  @IsString() @Length(2, 100)
+  companyName!: string;
+
+  @IsEmail()
+  email!: string;
+
+  @IsString() @Length(2, 2)
+  country!: string;
 
   @IsOptional()
-  @IsString() @Length(0, 500) message?: string;
+  @IsString() @Length(0, 500)
+  message?: string;
 
   @IsOptional()
   @IsUrl()
   website?: string;
 
+  // Monthly NGN payout volume — e.g. "₦10m – ₦50m/month"
+  // Stored as a free string so no schema change is needed.
   @IsOptional()
   @IsString()
-  estimatedVolume?: string; // e.g. "£10k–£50k/month"
+  estimatedMonthlyVolume?: string;
+
+  // Brief description of use case — remittance, payroll, marketplace, etc.
+  @IsOptional()
+  @IsString() @Length(0, 200)
+  useCase?: string;
 }
 
 @ApiTags('Public')
@@ -37,39 +50,51 @@ export class InterestController {
   @Public()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: 'Submit expression of interest',
-    description: 'Public endpoint — prospective partners submit their details. Admin is notified via a SYSTEM notification.',
+    summary:     'Submit expression of interest',
+    description:
+      'Public endpoint — prospective partners submit their details. ' +
+      'Admin is notified via a SYSTEM notification in the inbox.',
   })
   async submit(@Body() dto: ExpressionOfInterestDto) {
-    // Store as a SYSTEM notification for admin review
-    // Find the admin account to attach the notification to
     const admin = await this.prisma.partner.findFirst({
-      where: { role: 'ADMIN' },
+      where:   { role: 'ADMIN' },
       orderBy: { createdAt: 'asc' },
     });
 
     if (admin) {
+      const volumeNote = dto.estimatedMonthlyVolume
+        ? ` Estimated monthly volume: ${dto.estimatedMonthlyVolume}.`
+        : '';
+      const useCaseNote = dto.useCase
+        ? ` Use case: ${dto.useCase}.`
+        : '';
+      const messageNote = dto.message
+        ? ` Message: "${dto.message}"`
+        : '';
+
       await this.prisma.notification.create({
         data: {
           partnerId: admin.id,
           type:      'SYSTEM',
           title:     `New Partner Interest: ${dto.companyName}`,
-          body:      `${dto.companyName} (${dto.email}, ${dto.country}) has expressed interest in joining Elorge.${dto.estimatedVolume ? ` Estimated volume: ${dto.estimatedVolume}.` : ''}${dto.message ? ` Message: "${dto.message}"` : ''}`,
-          read:      false,
-          metadata:  {
-            companyName:     dto.companyName,
-            email:           dto.email,
-            country:         dto.country,
-            website:         dto.website,
-            estimatedVolume: dto.estimatedVolume,
-            message:         dto.message,
-            submittedAt:     new Date().toISOString(),
+          body:
+            `${dto.companyName} (${dto.email}, ${dto.country}) has expressed interest ` +
+            `in joining Elorge.${volumeNote}${useCaseNote}${messageNote}`,
+          read:     false,
+          metadata: {
+            companyName:            dto.companyName,
+            email:                  dto.email,
+            country:                dto.country,
+            website:                dto.website ?? null,
+            estimatedMonthlyVolume: dto.estimatedMonthlyVolume ?? null,
+            useCase:                dto.useCase ?? null,
+            message:                dto.message ?? null,
+            submittedAt:            new Date().toISOString(),
           },
         },
       });
     }
 
-    // Return success regardless — don't leak whether admin exists
     return {
       success: true,
       message: 'Thank you for your interest. Our team will be in touch within 2 business days.',

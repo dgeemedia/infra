@@ -108,7 +108,7 @@ function PartnersContent() {
                     {formatNumber(partner.totalPayouts)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {formatNaira(partner.deliveredVolume)}
+                    {formatNaira(partner.deliveredVolumeKobo)}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                     {formatDate(partner.createdAt)}

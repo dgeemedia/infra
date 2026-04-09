@@ -15,32 +15,42 @@ const COUNTRIES = [
   { code: 'NG', label: 'Nigeria 🇳🇬'          },
   { code: 'GH', label: 'Ghana 🇬🇭'            },
   { code: 'KE', label: 'Kenya 🇰🇪'            },
-  { code: 'ZA', label: 'South Africa 🇿🇦'    },
+  { code: 'ZA', label: 'South Africa 🇿🇦'     },
 ];
 
-// USD-denominated ranges — universally understood across all partner countries.
-// The estimatedVolume field is stored as a free string so no schema change is needed.
-const VOLUMES = [
-  'Under $10k/month',
-  '$10k – $50k/month',
-  '$50k – $200k/month',
-  '$200k – $1m/month',
-  'Over $1m/month',
+// NGN monthly volume ranges — reflects the Naira-pipe model.
+// Partners fund wallets in Naira and disburse in Naira.
+const MONTHLY_VOLUMES = [
+  'Under ₦5m / month',
+  '₦5m – ₦20m / month',
+  '₦20m – ₦100m / month',
+  '₦100m – ₦500m / month',
+  'Over ₦500m / month',
   'Not sure yet',
+];
+
+const USE_CASES = [
+  'Remittance / diaspora transfers',
+  'Payroll disbursements',
+  'Marketplace seller payouts',
+  'Gig economy worker payments',
+  'Insurance / loan disbursements',
+  'Other',
 ];
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
 export default function InterestPage() {
-  const [companyName,     setCompanyName]     = useState('');
-  const [email,           setEmail]           = useState('');
-  const [country,         setCountry]         = useState('GB');
-  const [website,         setWebsite]         = useState('');
-  const [estimatedVolume, setEstimatedVolume] = useState('');
-  const [message,         setMessage]         = useState('');
-  const [loading,         setLoading]         = useState(false);
-  const [submitted,       setSubmitted]       = useState(false);
-  const [error,           setError]           = useState('');
+  const [companyName,            setCompanyName]            = useState('');
+  const [email,                  setEmail]                  = useState('');
+  const [country,                setCountry]                = useState('GB');
+  const [website,                setWebsite]                = useState('');
+  const [estimatedMonthlyVolume, setEstimatedMonthlyVolume] = useState('');
+  const [useCase,                setUseCase]                = useState('');
+  const [message,                setMessage]                = useState('');
+  const [loading,                setLoading]                = useState(false);
+  const [submitted,              setSubmitted]              = useState(false);
+  const [error,                  setError]                  = useState('');
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -55,9 +65,10 @@ export default function InterestPage() {
           companyName,
           email,
           country,
-          website:         website    || undefined,
-          estimatedVolume: estimatedVolume || undefined,
-          message:         message    || undefined,
+          website:                website                || undefined,
+          estimatedMonthlyVolume: estimatedMonthlyVolume || undefined,
+          useCase:                useCase                || undefined,
+          message:                message                || undefined,
         }),
       });
 
@@ -110,9 +121,9 @@ export default function InterestPage() {
             E
           </div>
           <h1 className="text-2xl font-bold text-foreground">Partner with Elorge</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Send NGN payouts to Nigerian bank accounts via our API.
-            Tell us about your business and we'll be in touch.
+          <p className="mt-1 text-sm text-muted-foreground max-w-sm mx-auto">
+            Send Naira payouts to any Nigerian bank account via our API.
+            You handle FX — we handle the Nigerian disbursement.
           </p>
         </div>
 
@@ -127,6 +138,8 @@ export default function InterestPage() {
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
+
+              {/* Company name */}
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   Company Name <span className="text-destructive">*</span>
@@ -141,6 +154,7 @@ export default function InterestPage() {
                 />
               </div>
 
+              {/* Email */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   Business Email <span className="text-destructive">*</span>
@@ -155,6 +169,7 @@ export default function InterestPage() {
                 />
               </div>
 
+              {/* Country */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   Country <span className="text-destructive">*</span>
@@ -170,6 +185,7 @@ export default function InterestPage() {
                 </select>
               </div>
 
+              {/* Website */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
                   Website
@@ -183,34 +199,59 @@ export default function InterestPage() {
                 />
               </div>
 
+              {/* Monthly NGN volume */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Estimated Monthly Volume
+                  Estimated Monthly Naira Volume
                 </label>
                 <select
-                  value={estimatedVolume}
-                  onChange={(e) => setEstimatedVolume(e.target.value)}
+                  value={estimatedMonthlyVolume}
+                  onChange={(e) => setEstimatedMonthlyVolume(e.target.value)}
                   className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 >
                   <option value="">Select range…</option>
-                  {VOLUMES.map((v) => (
+                  {MONTHLY_VOLUMES.map((v) => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
               </div>
 
+              {/* Use case */}
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-foreground mb-1.5">
-                  Tell us about your use case
+                  Primary Use Case
+                </label>
+                <select
+                  value={useCase}
+                  onChange={(e) => setUseCase(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Select use case…</option>
+                  {USE_CASES.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Message */}
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Additional context
                 </label>
                 <textarea
                   rows={3}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="e.g. We're a UK fintech sending remittances to Nigerian families on behalf of our customers..."
+                  placeholder="e.g. We're a UK fintech sending diaspora remittances to Nigerian families. We convert GBP to NGN in-house and need a reliable NGN disbursement pipe..."
                   className="w-full rounded-lg border border-input bg-background px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                 />
               </div>
+            </div>
+
+            {/* How it works note */}
+            <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-xs text-blue-700 space-y-1">
+              <p className="font-semibold">How Elorge works</p>
+              <p>You convert your foreign currency to Naira using your own FX engine. You pre-fund a Naira wallet with us, then call our API to disburse to any Nigerian bank account. We charge a small flat Naira fee per payout — you keep your FX margin.</p>
             </div>
 
             <button
@@ -234,7 +275,7 @@ export default function InterestPage() {
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Elorge Technologies Limited •{' '}
+          © {new Date().getFullYear()} Elorge Technologies Limited ·{' '}
           <a href="mailto:support@elorge.com" className="hover:underline">support@elorge.com</a>
         </p>
       </div>

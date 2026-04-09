@@ -1,11 +1,10 @@
 // apps/api/src/modules/admin/balance.controller.ts
 //
-// Admin-only endpoints for managing partner balances.
-// Drop into AdminModule alongside the existing admin controllers.
+// Admin-only endpoints for managing partner Naira wallet balances.
 
 import {
   Body, Controller, Get, HttpCode, HttpStatus,
-  Param, Post, Query,
+  Param, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
@@ -13,37 +12,29 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-import { PrismaService }  from '../../database/prisma.service';
-import { AdminGuard }     from '../../common/guards/admin.guard'; // your existing admin guard
-import { UseGuards }      from '@nestjs/common';
+import { PrismaService } from '../../database/prisma.service';
+import { AdminGuard }    from '../../common/guards/admin.guard';
 
 // ── DTOs ──────────────────────────────────────────────────────
 
 class TopUpDto {
-  // Amount in GBP pence (integer). Sending £50.00 → amountPence: 5000.
-  // Integer avoids float drift; easy to validate and audit.
+  // Amount in kobo (₦500.00 → 50000 kobo). Integer avoids float drift.
   @IsInt()
   @IsPositive()
   @Type(() => Number)
-  amountPence!: number;
+  amountKobo!: number;
 
-  // Human note for the ledger, e.g. "Wise transfer TW-REF-12345 received 2026-04-05"
+  // Human note for the ledger, e.g. "NGN transfer REF-12345 confirmed 2026-04-05"
   @IsString()
   @Length(5, 200)
   description!: string;
 }
 
 class BalanceLedgerQueryDto {
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Type(() => Number)
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
   page?: number = 1;
 
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Type(() => Number)
+  @IsOptional() @IsInt() @Min(1) @Type(() => Number)
   pageSize?: number = 20;
 
   @IsOptional()
@@ -61,11 +52,11 @@ export class BalanceController {
 
   // ── GET current balance ───────────────────────────────────
   @Get()
-  @ApiOperation({ summary: 'Get partner current balance' })
+  @ApiOperation({ summary: 'Get partner current Naira wallet balance' })
   async getBalance(@Param('id') id: string) {
     const partner = await this.prisma.partner.findUnique({
       where:  { id },
-      select: { id: true, name: true, email: true, balancePence: true },
+      select: { id: true, name: true, email: true, balanceKobo: true },
     });
     if (!partner) return { success: false, message: 'Partner not found' };
 
@@ -75,56 +66,46 @@ export class BalanceController {
         partnerId:    partner.id,
         name:         partner.name,
         email:        partner.email,
-        balancePence: partner.balancePence,
-        balanceGbp:   (partner.balancePence / 100).toFixed(2),
+        balanceKobo:  partner.balanceKobo,
+        balanceNaira: (partner.balanceKobo / 100).toFixed(2),
       },
     };
   }
 
-  // ── POST top-up — admin records an incoming Wise payment ──
+  // ── POST top-up ───────────────────────────────────────────
   //
   // Workflow:
-  //  1. Partner sends GBP (or USD/EUR converted) to your Wise account
-  //  2. You confirm receipt in Wise dashboard
-  //  3. You call this endpoint with amountPence + the Wise reference
-  //  4. Partner's balance is credited; they can now create payouts
-  //
-  // This is a manual step by design — you confirm real money
-  // arrived before crediting the partner. No auto-reconciliation
-  // with Wise at this stage (can be added later via Wise webhooks).
+  //  1. Partner wires NGN to Elorge (via VAN auto-credit or manual transfer)
+  //  2. Admin confirms receipt and calls this endpoint
+  //  3. Partner's Naira wallet is credited; they can now create payouts
   @Post('topup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Credit a partner balance (admin records confirmed Wise receipt)',
-    description:
-      'Call after confirming the partner\'s Wise payment landed in your account. '
-      + 'amountPence is in GBP pence (£50.00 = 5000). '
-      + 'description should include the Wise payment reference for audit.',
+    summary:     'Credit a partner Naira wallet (admin confirms receipt)',
+    description: 'amountKobo is in kobo (₦500.00 = 50000). ' +
+                 'description should include the transfer reference for audit.',
   })
-  async topUp(
-    @Param('id') id:  string,
-    @Body()      dto: TopUpDto,
-  ) {
+  async topUp(@Param('id') id: string, @Body() dto: TopUpDto) {
     const partner = await this.prisma.partner.findUnique({
       where:  { id },
-      select: { id: true, name: true, balancePence: true },
+      select: { id: true, name: true, balanceKobo: true },
     });
     if (!partner) return { success: false, message: 'Partner not found' };
 
-    const balanceAfterPence = partner.balancePence + dto.amountPence;
+    const balanceAfterKobo = partner.balanceKobo + dto.amountKobo;
 
     await this.prisma.$transaction([
       this.prisma.partner.update({
         where: { id },
-        data:  { balancePence: { increment: dto.amountPence } },
+        data:  { balanceKobo: { increment: dto.amountKobo } },
       }),
       this.prisma.balanceTransaction.create({
         data: {
-          partnerId:         id,
-          type:              'CREDIT',
-          amountPence:       dto.amountPence,
-          balanceAfterPence,
-          description:       dto.description,
+          partnerId:        id,
+          type:             'CREDIT',
+          amountKobo:       dto.amountKobo,
+          balanceAfterKobo,
+          description:      dto.description,
         },
       }),
     ]);
@@ -132,23 +113,21 @@ export class BalanceController {
     return {
       success: true,
       data: {
-        partnerId:         id,
-        creditedPence:     dto.amountPence,
-        creditedGbp:       (dto.amountPence / 100).toFixed(2),
-        newBalancePence:   balanceAfterPence,
-        newBalanceGbp:     (balanceAfterPence / 100).toFixed(2),
-        description:       dto.description,
+        partnerId:       id,
+        name:            partner.name,
+        creditedKobo:    dto.amountKobo,
+        creditedNaira:   (dto.amountKobo / 100).toFixed(2),
+        newBalanceKobo:  balanceAfterKobo,
+        newBalanceNaira: (balanceAfterKobo / 100).toFixed(2),
+        description:     dto.description,
       },
     };
   }
 
-  // ── GET ledger — full credit/debit history for a partner ──
+  // ── GET ledger ────────────────────────────────────────────
   @Get('ledger')
-  @ApiOperation({ summary: 'Get partner balance ledger (paginated)' })
-  async getLedger(
-    @Param('id') id:    string,
-    @Query()     query: BalanceLedgerQueryDto,
-  ) {
+  @ApiOperation({ summary: 'Get partner Naira wallet ledger (paginated)' })
+  async getLedger(@Param('id') id: string, @Query() query: BalanceLedgerQueryDto) {
     const page     = query.page     ?? 1;
     const pageSize = query.pageSize ?? 20;
 
@@ -174,10 +153,10 @@ export class BalanceController {
         entries: entries.map((e) => ({
           id:                e.id,
           type:              e.type,
-          amountPence:       e.amountPence,
-          amountGbp:         (e.amountPence / 100).toFixed(2),
-          balanceAfterPence: e.balanceAfterPence,
-          balanceAfterGbp:   (e.balanceAfterPence / 100).toFixed(2),
+          amountKobo:        e.amountKobo,
+          amountNaira:       (e.amountKobo / 100).toFixed(2),
+          balanceAfterKobo:  e.balanceAfterKobo,
+          balanceAfterNaira: (e.balanceAfterKobo / 100).toFixed(2),
           description:       e.description,
           payoutReference:   e.payout?.partnerReference ?? null,
           createdAt:         e.createdAt.toISOString(),

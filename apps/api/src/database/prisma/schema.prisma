@@ -53,27 +53,20 @@ model ApiKey {
 }
 
 model Payout {
-  id                String  @id @default(uuid())
+  id                String   @id @default(uuid())
   partnerId         String
   partnerReference  String
-
-  // Amount credited to the recipient (kobo). Exact. Never modified.
   nairaAmountKobo   Int
-
-  // Elorge's platform fee (kobo). Charged to partner wallet.
-  feeKobo           Int     @default(0)
-
-  // Partner's declared FX rate — audit trail only, never used in calculations.
+  feeKobo           Int      @default(0)
   exchangeRateAudit Decimal? @db.Decimal(10, 4)
-
-  status        PayoutStatus @default(PENDING)
-  pspReference  String?
-  failureReason String?
-  bankSessionId String?
-  narration     String?
-  deliveredAt   DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  status            PayoutStatus @default(PENDING)
+  pspReference      String?
+  failureReason     String?
+  bankSessionId     String?
+  narration         String?
+  deliveredAt       DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   balanceTransactions BalanceTransaction[]
   partner             Partner              @relation(fields: [partnerId], references: [id])
@@ -252,5 +245,7 @@ enum NotificationType {
   WEBHOOK_FAILED
   API_KEY_CREATED
   ACCOUNT_SUSPENDED
+  BALANCE_LOW
+  BALANCE_CREDITED
   SYSTEM
 }

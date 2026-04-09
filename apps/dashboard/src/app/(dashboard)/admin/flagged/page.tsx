@@ -1,27 +1,23 @@
 'use client';
 
 // apps/dashboard/src/app/(dashboard)/admin/flagged/page.tsx
-import { AdminGuard }                      from '@/components/admin/AdminGuard';
-import { useFlaggedPayouts, useReleasePayout, useRejectPayout } from '@/hooks/useAdmin';
-import { formatNaira, formatDate, cn }     from '@/lib/utils';
+import { AdminGuard }        from '@/components/admin/AdminGuard';
+import {
+  useFlaggedPayouts,
+  useReleasePayout,
+  useRejectPayout,
+  type FlaggedPayout,
+} from '@/hooks/useAdmin';
+import { formatNaira, formatDate } from '@/lib/utils';
 import { AlertTriangle, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-
-interface FlaggedPayout {
-  id:               string;
-  partnerReference: string;
-  nairaAmount:      string;
-  createdAt:        string;
-  narration:        string | null;
-  partner:          { name: string; email: string };
-  recipient:        { fullName: string; bankCode: string; bankName: string; accountNumber: string };
-}
 
 function FlaggedContent() {
   const { data: payouts, isLoading } = useFlaggedPayouts();
   const releaseMutation = useReleasePayout();
   const rejectMutation  = useRejectPayout();
 
-  const flaggedList = (payouts ?? []) as FlaggedPayout[];
+  // Use the type directly from the hook — no local redefinition
+  const flaggedList: FlaggedPayout[] = payouts ?? [];
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -79,19 +75,34 @@ function FlaggedContent() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Amount</p>
-                    <p className="font-medium text-foreground">{formatNaira(Number(payout.nairaAmount))}</p>
+                    {/* nairaAmountKobo is in kobo — divide by 100 for NGN */}
+                    <p className="font-medium text-foreground">
+                      {formatNaira(payout.nairaAmountKobo / 100)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Fee</p>
+                    <p className="font-medium text-foreground">
+                      {formatNaira(payout.feeKobo / 100)}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Recipient</p>
-                    <p className="font-medium text-foreground">{payout.recipient.fullName}</p>
+                    <p className="font-medium text-foreground">
+                      {payout.recipient?.fullName ?? '—'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Bank</p>
-                    <p className="font-medium text-foreground">{payout.recipient.bankName}</p>
+                    <p className="font-medium text-foreground">
+                      {payout.recipient?.bankName ?? '—'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Account</p>
-                    <p className="font-mono text-sm text-foreground">{payout.recipient.accountNumber}</p>
+                    <p className="font-mono text-sm text-foreground">
+                      {payout.recipient?.accountNumber ?? '—'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Flagged at</p>
@@ -101,6 +112,14 @@ function FlaggedContent() {
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">Narration</p>
                       <p className="text-foreground">{payout.narration}</p>
+                    </div>
+                  )}
+                  {payout.failureReason && (
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground">Flag Reason</p>
+                      <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-1">
+                        {payout.failureReason}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -113,11 +132,10 @@ function FlaggedContent() {
                   disabled={releaseMutation.isPending || rejectMutation.isPending}
                   className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
                 >
-                  {releaseMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
+                  {releaseMutation.isPending
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <CheckCircle2 className="h-4 w-4" />
+                  }
                   Release
                 </button>
                 <button
@@ -125,11 +143,10 @@ function FlaggedContent() {
                   disabled={releaseMutation.isPending || rejectMutation.isPending}
                   className="flex items-center gap-1.5 rounded-lg border border-destructive/50 px-4 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50 transition-colors"
                 >
-                  {rejectMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <XCircle className="h-4 w-4" />
-                  )}
+                  {rejectMutation.isPending
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <XCircle className="h-4 w-4" />
+                  }
                   Reject
                 </button>
               </div>

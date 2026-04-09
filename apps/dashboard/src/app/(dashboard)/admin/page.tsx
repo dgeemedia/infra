@@ -140,14 +140,14 @@ function AdminOverviewContent() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <StatCard
             label="Total Volume Delivered"
-            value={formatNaira(stats?.totalVolumeNaira ?? 0)}
+            value={formatNaira(Number(stats?.totalVolumeNaira ?? 0))}
             sub="Naira credited to recipients"
             icon={TrendingUp}
             color="green"
           />
           <StatCard
             label="Total Fees Collected"
-            value={formatNaira(stats?.totalFeesCollected ?? 0)}
+            value={formatNaira(Number(stats?.totalFeesKobo ?? 0))}
             sub="Platform revenue"
             icon={DollarSign}
             color="purple"

@@ -1,4 +1,3 @@
-// apps/api/src/modules/payouts/payouts.service.ts
 import {
   BadRequestException,
   ConflictException,
@@ -8,15 +7,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectQueue }   from '@nestjs/bull';
-import { ConfigService } from '@nestjs/config';
-import { Queue }         from 'bull';
+import { InjectQueue }       from '@nestjs/bull';
+import { ConfigService }     from '@nestjs/config';
+import { NotificationType }  from '@prisma/client';
+import { Queue }             from 'bull';
 
 import { ERROR_CODES, PayoutStatus, getBankName, isValidBankCode } from '@elorge/constants';
 import type { PayoutListResponse, PayoutResponse, PayoutStatusResponse } from '@elorge/types';
 
-import { ComplianceService } from '../compliance/compliance.service';
-import { PspFactory }        from '../psp/psp.factory';
+import { ComplianceService }               from '../compliance/compliance.service';
+import { PspFactory }                      from '../psp/psp.factory';
 import { CreatePayoutDto, PayoutQueryDto } from './payouts.dto';
 import { PayoutsRepository }              from './payouts.repository';
 import { PAYOUT_QUEUE }                   from '../../queues/payout.queue';
@@ -24,28 +24,22 @@ import { PrismaService }                  from '../../database/prisma.service';
 
 // ── Fee schedule ──────────────────────────────────────────────
 //
-//  Elorge charges partners a flat naira fee per payout.
-//  Flutterwave charges Elorge ~₦26.88 (2,688 kobo) per transfer.
-//  Elorge's profit = fee - ₦26.88.
+//  Tier thresholds and fees are in kobo (1 NGN = 100 kobo).
+//  Flutterwave charges Elorge ~₦26.88 per transfer.
+//  Elorge profit per payout = fee - ₦26.88.
 //
-//  Example with ₦500 fee tier:
-//    Partner pays: ₦250,000 + ₦500 = ₦250,500 from their wallet
-//    Flutterwave receives: ₦250,000 (exact to beneficiary)
-//    Flutterwave charges Elorge: ₦26.88
-//    Elorge profit per payout: ₦500 - ₦26.88 = ₦473.12
-//
-//  At 1,000 payouts/month: ~₦473,120 profit (~£231)
-//  At 10,000 payouts/month: ~₦4,731,200 profit (~£2,310)
+//  ≤ ₦50,000     → ₦150  fee  (15,000 kobo)
+//  ≤ ₦200,000    → ₦250  fee  (25,000 kobo)
+//  ≤ ₦1,000,000  → ₦400  fee  (40,000 kobo)
+//  > ₦1,000,000  → ₦600  fee  (60,000 kobo)
 //
 function calculateFeeKobo(nairaAmountKobo: number): number {
-  // Amounts in kobo (1 NGN = 100 kobo)
   const TIERS: Array<{ maxKobo: number; feeKobo: number }> = [
-    { maxKobo: 5_000_000,    feeKobo: 15_000  }, // ≤ ₦50,000   → fee ₦150
-    { maxKobo: 20_000_000,   feeKobo: 25_000  }, // ≤ ₦200,000  → fee ₦250
-    { maxKobo: 100_000_000,  feeKobo: 40_000  }, // ≤ ₦1,000,000→ fee ₦400
-    { maxKobo: Infinity,     feeKobo: 60_000  }, // > ₦1,000,000→ fee ₦600
+    { maxKobo: 5_000_000,   feeKobo: 15_000 },
+    { maxKobo: 20_000_000,  feeKobo: 25_000 },
+    { maxKobo: 100_000_000, feeKobo: 40_000 },
+    { maxKobo: Infinity,    feeKobo: 60_000 },
   ];
-
   for (const tier of TIERS) {
     if (nairaAmountKobo <= tier.maxKobo) return tier.feeKobo;
   }
@@ -97,11 +91,6 @@ export class PayoutsService {
     const totalDebitKobo  = nairaAmountKobo + feeKobo;
 
     // ── 4. Balance check ──────────────────────────────────
-    //
-    // Partner's wallet must cover:
-    //   nairaAmountKobo  → goes to the recipient via Flutterwave
-    //   feeKobo          → stays with Elorge (minus Flutterwave's ~₦27)
-    //
     const minBalanceKobo = this.configService.get<number>('app.minPartnerBalanceKobo') ?? 0;
 
     const partner = await this.prisma.partner.findUnique({
@@ -118,19 +107,19 @@ export class PayoutsService {
     if (balanceAfterKobo < minBalanceKobo) {
       throw new HttpException(
         {
-          code:            'INSUFFICIENT_BALANCE',
+          code:        'INSUFFICIENT_BALANCE',
           message:
             `Insufficient Naira wallet balance. ` +
             `Required: ${koboToNaira(totalDebitKobo)} ` +
             `(${koboToNaira(nairaAmountKobo)} payout + ${koboToNaira(feeKobo)} fee). ` +
             `Available: ${koboToNaira(partner.balanceKobo)}. ` +
-            `Fund your wallet by transferring Naira to your dedicated account number.`,
-          required:  totalDebitKobo,
-          available: partner.balanceKobo,
-          fee:       feeKobo,
+            `Fund your wallet by transferring Naira to your dedicated VAN.`,
+          required:    totalDebitKobo,
+          available:   partner.balanceKobo,
+          fee:         feeKobo,
           nairaAmount: nairaAmountKobo,
         },
-        HttpStatus.PAYMENT_REQUIRED,  // 402
+        HttpStatus.PAYMENT_REQUIRED,
       );
     }
 
@@ -143,16 +132,10 @@ export class PayoutsService {
     });
 
     // ── 6. Create payout + debit balance atomically ───────
-    //
-    // $transaction ensures we never debit without creating the payout
-    // record, and never create the record without debiting.
-    //
     const bankName = getBankName(dto.recipient.bankCode);
-
-    let payoutId: string;
+    let payoutId   = '';
 
     await this.prisma.$transaction(async (tx) => {
-      // Create payout record
       const payout = await tx.payout.create({
         data: {
           partnerId:         partnerId,
@@ -176,13 +159,11 @@ export class PayoutsService {
 
       payoutId = payout.id;
 
-      // Debit partner wallet: nairaAmountKobo + feeKobo
       await tx.partner.update({
         where: { id: partnerId },
         data:  { balanceKobo: { decrement: totalDebitKobo } },
       });
 
-      // Ledger entry
       await tx.balanceTransaction.create({
         data: {
           partnerId,
@@ -201,18 +182,18 @@ export class PayoutsService {
     // ── 7. Compliance hold or queue ───────────────────────
     if (screening.flagged) {
       await this.prisma.payout.update({
-        where: { id: payoutId! },
+        where: { id: payoutId },
         data:  { status: 'FLAGGED', failureReason: screening.matchDetails ?? 'Sanctions match' },
       });
       this.logger.warn(`Payout ${payoutId} flagged: ${screening.matchDetails}`);
     } else {
       await this.payoutQueue.add(
         'dispatch',
-        { payoutId: payoutId! },
+        { payoutId },
         {
           attempts:         5,
           backoff:          { type: 'exponential', delay: 5_000 },
-          jobId:            payoutId!,
+          jobId:            payoutId,
           removeOnComplete: true,
           removeOnFail:     false,
         },
@@ -226,27 +207,27 @@ export class PayoutsService {
 
     // ── 8. Low balance warning ────────────────────────────
     const LOW_BALANCE_PAYOUTS = 20;
-    const payoutsLeft = Math.floor(balanceAfterKobo / feeKobo);
+    const payoutsLeft = feeKobo > 0 ? Math.floor(balanceAfterKobo / feeKobo) : 0;
     if (payoutsLeft < LOW_BALANCE_PAYOUTS && payoutsLeft >= 0) {
       void this.sendLowBalanceAlert(partnerId, balanceAfterKobo, payoutsLeft);
     }
 
-    const payout = await this.repo.findById(payoutId!);
+    const payout = await this.repo.findById(payoutId);
     return this.formatResponse(payout!, nairaAmountKobo, feeKobo);
   }
 
   // ── Low balance alert ─────────────────────────────────────
   private async sendLowBalanceAlert(
-    partnerId:    string,
-    balanceKobo:  number,
-    payoutsLeft:  number,
+    partnerId:   string,
+    balanceKobo: number,
+    payoutsLeft: number,
   ): Promise<void> {
     try {
-      // Throttle: only one alert per 24 hours
+      // Throttle: only one alert per 24 hours per partner
       const recent = await this.prisma.notification.findFirst({
         where: {
           partnerId,
-          type:      'BALANCE_LOW',
+          type:      NotificationType.BALANCE_LOW,
           createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) },
         },
       });
@@ -255,12 +236,12 @@ export class PayoutsService {
       await this.prisma.notification.create({
         data: {
           partnerId,
-          type:  'BALANCE_LOW',
+          type:  NotificationType.BALANCE_LOW,
           title: `Low wallet balance — ${payoutsLeft} payouts remaining`,
           body:
             `Your Elorge wallet is running low (${koboToNaira(balanceKobo)}). ` +
             `At the current fee rate, you have approximately ${payoutsLeft} payouts left. ` +
-            `Transfer Naira to your dedicated account number to top up.`,
+            `Transfer Naira to your dedicated VAN to top up.`,
           read:     false,
           metadata: { balanceKobo, payoutsLeft },
         },
@@ -288,11 +269,10 @@ export class PayoutsService {
 
     await this.repo.updateStatus(payoutId, PayoutStatus.PROCESSING);
 
-    const psp    = this.pspFactory.getAdapter();  // Flutterwave → Bankly fallover
+    const psp    = this.pspFactory.getAdapter();
     const result = await psp.transfer({
       reference:     payoutId,
-      // Convert kobo → naira for Flutterwave (FLW expects NGN decimal)
-      amount:        payout.nairaAmountKobo / 100,
+      amount:        payout.nairaAmountKobo / 100, // FLW expects NGN decimal, not kobo
       bankCode:      payout.recipient.bankCode,
       accountNumber: payout.recipient.accountNumber,
       accountName:   payout.recipient.fullName,
@@ -310,15 +290,7 @@ export class PayoutsService {
         `${koboToNaira(payout.nairaAmountKobo)} via PSP ref ${result.pspReference}`,
       );
     } else {
-      // ── Refund the fee on failure ──────────────────────
-      //
-      // We keep the nairaAmountKobo deducted (it was never sent —
-      // it stays in our Flutterwave wallet as part of the float).
-      // We refund only the Elorge fee (feeKobo) as a gesture of
-      // fairness — the payout did not succeed.
-      //
-      // The nairaAmountKobo gets credited back when we retry.
-      // On final failure, we refund everything (nairaAmount + fee).
+      // Refund the fee on failure — nairaAmountKobo never left our FLW wallet
       const feeKobo = payout.feeKobo;
       if (feeKobo > 0) {
         await this.prisma.$transaction(async (tx) => {
@@ -339,8 +311,7 @@ export class PayoutsService {
           });
         });
         this.logger.log(
-          `Refunded fee ${koboToNaira(feeKobo)} to partner ${payout.partnerId} ` +
-          `for failed payout ${payoutId}`,
+          `Refunded fee ${koboToNaira(feeKobo)} to partner ${payout.partnerId}`,
         );
       }
 
@@ -384,8 +355,10 @@ export class PayoutsService {
     const pageSize = query.pageSize ?? 20;
     const { data, total } = await this.repo.findMany({
       partnerId, page, pageSize,
-      status: query.status, startDate: query.startDate,
-      endDate: query.endDate, search: query.search,
+      status:    query.status,
+      startDate: query.startDate,
+      endDate:   query.endDate,
+      search:    query.search,
     });
 
     return {
@@ -409,6 +382,9 @@ export class PayoutsService {
     };
   }
 
+  // ══════════════════════════════════════════════════════════
+  //  PRIVATE HELPERS
+  // ══════════════════════════════════════════════════════════
   private formatResponse(
     payout: { id: string; partnerReference: string; status: string; createdAt: Date },
     nairaAmountKobo: number,

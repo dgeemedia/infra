@@ -13,17 +13,6 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
 const STATUSES = ['', 'PENDING', 'PROCESSING', 'DELIVERED', 'FAILED', 'FLAGGED'];
 
-interface Payout {
-  payoutId:         string;
-  partnerReference: string;
-  status:           string;
-  nairaAmount:      string;
-  createdAt:        string;
-  deliveredAt:      string | null;
-  partner:          { name: string; email: string };
-  recipient:        { fullName: string; bankName: string } | null;
-}
-
 function TransactionsContent() {
   const [page,      setPage]      = useState(1);
   const [status,    setStatus]    = useState('');
@@ -39,7 +28,7 @@ function TransactionsContent() {
     partnerId: partnerId || undefined,
   });
 
-  const payouts = (data?.data ?? []) as Payout[];
+  const payouts = data?.data ?? [];
 
   // Client-side reference search (API-side search can be added later)
   const filtered = search.trim()
@@ -137,7 +126,7 @@ function TransactionsContent() {
               ))}
 
               {!isLoading && filtered.map((payout) => (
-                <tr key={payout.payoutId} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                <tr key={payout.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-mono text-xs">
                     {truncateId(payout.partnerReference)}
                   </td>
@@ -153,7 +142,7 @@ function TransactionsContent() {
                     <StatusBadge status={payout.status} />
                   </td>
                   <td className="px-4 py-3 font-medium text-foreground text-xs">
-                    {formatNaira(Number(payout.nairaAmount))}
+                    {formatNaira(payout.nairaAmountKobo / 100)}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {formatDate(payout.createdAt)}
