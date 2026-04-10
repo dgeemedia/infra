@@ -1,3 +1,4 @@
+// packages/constants/src/error-codes.d.ts
 export declare const ERROR_CODES: {
     readonly INVALID_API_KEY: "ELG_001";
     readonly EXPIRED_API_KEY: "ELG_002";

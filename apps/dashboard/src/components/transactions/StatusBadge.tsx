@@ -1,3 +1,4 @@
+// apps/dashboard/src/components/transactions/StatusBadge.tsx
 import { cn, STATUS_CLASSES, STATUS_LABELS } from '@/lib/utils';
 
 interface StatusBadgeProps {

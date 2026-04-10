@@ -1,3 +1,4 @@
+// apps/api/src/modules/payouts/payouts.service.ts
 import {
   BadRequestException,
   ConflictException,
@@ -223,7 +224,6 @@ export class PayoutsService {
     payoutsLeft: number,
   ): Promise<void> {
     try {
-      // Throttle: only one alert per 24 hours per partner
       const recent = await this.prisma.notification.findFirst({
         where: {
           partnerId,
@@ -272,7 +272,7 @@ export class PayoutsService {
     const psp    = this.pspFactory.getAdapter();
     const result = await psp.transfer({
       reference:     payoutId,
-      amount:        payout.nairaAmountKobo / 100, // FLW expects NGN decimal, not kobo
+      amount:        payout.nairaAmountKobo / 100,
       bankCode:      payout.recipient.bankCode,
       accountNumber: payout.recipient.accountNumber,
       accountName:   payout.recipient.fullName,
@@ -290,7 +290,6 @@ export class PayoutsService {
         `${koboToNaira(payout.nairaAmountKobo)} via PSP ref ${result.pspReference}`,
       );
     } else {
-      // Refund the fee on failure — nairaAmountKobo never left our FLW wallet
       const feeKobo = payout.feeKobo;
       if (feeKobo > 0) {
         await this.prisma.$transaction(async (tx) => {
@@ -336,10 +335,10 @@ export class PayoutsService {
       });
     }
     return {
-      payoutId:         payout.id,
+      id:               payout.id,
       partnerReference: payout.partnerReference,
       status:           payout.status as PayoutStatus,
-      nairaAmount:      payout.nairaAmountKobo / 100,
+      nairaAmountKobo:  payout.nairaAmountKobo,
       deliveredAt:      payout.deliveredAt?.toISOString(),
       failureReason:    payout.failureReason ?? undefined,
       pspReference:     payout.pspReference  ?? undefined,
@@ -363,19 +362,27 @@ export class PayoutsService {
 
     return {
       data: data.map((p) => ({
-        payoutId:          p.id,
+        id:                p.id,
         partnerReference:  p.partnerReference,
         partnerId:         p.partnerId,
         status:            p.status as PayoutStatus,
-        nairaAmount:       p.nairaAmountKobo / 100,
-        exchangeRate:      Number(p.exchangeRateAudit ?? 0),
-        fee:               p.feeKobo / 100,
+        nairaAmountKobo:   p.nairaAmountKobo,
+        feeKobo:           p.feeKobo,
+        exchangeRateAudit: p.exchangeRateAudit != null ? Number(p.exchangeRateAudit) : null,
         estimatedDelivery: 'same_day',
         createdAt:         p.createdAt.toISOString(),
         updatedAt:         p.updatedAt.toISOString(),
         deliveredAt:       p.deliveredAt?.toISOString(),
+        narration:         p.narration     ?? undefined,
         pspReference:      p.pspReference  ?? undefined,
         failureReason:     p.failureReason ?? undefined,
+        recipient:         p.recipient ? {
+          fullName:      p.recipient.fullName,
+          bankCode:      p.recipient.bankCode,
+          bankName:      p.recipient.bankName,
+          accountNumber: p.recipient.accountNumber,
+          phone:         p.recipient.phone ?? undefined,
+        } : null,
       })),
       total, page, pageSize,
       totalPages: Math.ceil(total / pageSize),
@@ -391,12 +398,12 @@ export class PayoutsService {
     feeKobo:         number,
   ): PayoutResponse {
     return {
-      payoutId:          payout.id,
+      id:                payout.id,
       partnerReference:  payout.partnerReference,
       status:            payout.status as PayoutStatus,
-      nairaAmount:       nairaAmountKobo / 100,
-      exchangeRate:      0,
-      fee:               feeKobo / 100,
+      nairaAmountKobo,
+      feeKobo,
+      exchangeRateAudit: null,
       estimatedDelivery: 'same_day',
       createdAt:         payout.createdAt.toISOString(),
     };

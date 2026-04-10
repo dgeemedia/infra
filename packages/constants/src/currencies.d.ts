@@ -1,3 +1,4 @@
+// packages/constants/src/currencies.d.ts
 export declare enum Currency {
     GBP = "GBP",
     USD = "USD",

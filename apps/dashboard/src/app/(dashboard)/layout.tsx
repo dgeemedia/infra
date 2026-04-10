@@ -12,7 +12,7 @@ export default async function DashboardLayout({
 }) {
   const session = await getServerSession(authOptions);
 
-  console.log('[LAYOUT] session:', JSON.stringify(session));  // ← temporary
+  // console.log('[LAYOUT] session:', JSON.stringify(session));  // ← temporary
 
   if (!session) redirect('/login');
 

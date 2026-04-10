@@ -1,3 +1,4 @@
+// packages/constants/src/payout-status.d.ts
 export declare enum PayoutStatus {
     PENDING = "PENDING",
     PROCESSING = "PROCESSING",

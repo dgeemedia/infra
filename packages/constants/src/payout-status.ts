@@ -10,7 +10,7 @@ export enum PayoutStatus {
 // Terminal statuses — no further state changes expected
 export const TERMINAL_STATUSES: PayoutStatus[] = [
   PayoutStatus.DELIVERED,
-  PayoutStatus.FLAGGED,
+  PayoutStatus.FAILED,
 ];
 
 // Statuses considered successful for reporting

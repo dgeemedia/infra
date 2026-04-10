@@ -1,7 +1,7 @@
 // apps/dashboard/src/hooks/useTransactions.ts
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { PayoutListResponse, PayoutStatusResponse } from '@elorge/types';
 
@@ -32,7 +32,7 @@ export function useTransactions(filters: TransactionFilters = {}) {
       );
       return data.data;
     },
-    staleTime: 30_000, // 30 seconds
+    staleTime: 30_000,
   });
 }
 
@@ -47,7 +47,6 @@ export function useTransactionStatus(payoutId: string) {
       return data.data;
     },
     refetchInterval: (query) => {
-      // Poll every 5s while pending/processing
       const status = query.state.data?.status;
       return status === 'PENDING' || status === 'PROCESSING' ? 5_000 : false;
     },
@@ -68,17 +67,30 @@ export function useExportTransactions() {
         `/v1/payouts?${params.toString()}`,
       );
 
-      // Convert to CSV
-      const rows  = data.data.data;
-      const headers = ['ID', 'Reference', 'Status', 'Amount (GBP)', 'Naira Amount', 'Recipient', 'Bank', 'Created At', 'Delivered At'];
+      const rows = data.data.data;
+      const headers = [
+        'ID',
+        'Reference',
+        'Status',
+        'Naira Amount (NGN)',
+        'Fee (NGN)',
+        'Exchange Rate',
+        'Recipient',
+        'Bank',
+        'Created At',
+        'Delivered At',
+      ];
       const csvRows = rows.map((p) => [
-        p.payoutId,
+        p.id,
         p.partnerReference,
         p.status,
-        p.fee ? (Number(p.nairaAmount) / Number(p.exchangeRate)).toFixed(2) : '',
-        p.nairaAmount,
-        '',
-        '',
+        (p.nairaAmountKobo / 100).toFixed(2),
+        (p.feeKobo / 100).toFixed(2),
+        p.exchangeRateAudit !== null && p.exchangeRateAudit !== undefined
+          ? String(p.exchangeRateAudit)
+          : '',
+        p.recipient?.fullName ?? '',
+        p.recipient?.bankName ?? '',
         p.createdAt,
         p.deliveredAt ?? '',
       ]);
@@ -87,7 +99,6 @@ export function useExportTransactions() {
         .map((row) => row.map((v) => `"${String(v)}"`).join(','))
         .join('\n');
 
-      // Trigger download
       const blob = new Blob([csv], { type: 'text/csv' });
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');

@@ -1,3 +1,4 @@
+// packages/constants/src/bank-codes.d.ts
 export declare const NIGERIAN_BANKS: Record<string, string>;
 export type NigerianBankCode = keyof typeof NIGERIAN_BANKS;
 export declare const isValidBankCode: (code: string) => code is NigerianBankCode;

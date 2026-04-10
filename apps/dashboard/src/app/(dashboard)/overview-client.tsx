@@ -10,8 +10,7 @@ import {
 } from 'lucide-react';
 
 import { usePayoutStats }    from '@/hooks/usePayoutStats';
-import { useAdminStats }     from '@/hooks/useAdmin';
-import { useAdminBalances }  from '@/hooks/useAdmin';
+import { useAdminStats, useAdminBalances }     from '@/hooks/useAdmin';
 import { usePartnerBalance } from '@/hooks/usePartnerBalance';
 import { useTransactions }   from '@/hooks/useTransactions';
 import { VolumeChart }       from '@/components/charts/VolumeChart';
@@ -377,8 +376,8 @@ function AdminOverview() {
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Financials</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <StatCard label="Total Volume Delivered" value={isLoading ? '—' : formatNaira(stats?.totalVolumeNaira   ?? 0)} sub="Naira credited to recipients" icon={TrendingUp}  color="green"  />
-          <StatCard label="Total Fees Collected"   value={isLoading ? '—' : formatNaira(stats?.totalFeesCollected ?? 0)} sub="Platform revenue"             icon={DollarSign} color="purple" />
+          <StatCard label="Total Volume Delivered" value={isLoading ? '—' : formatNaira(stats?.totalVolumeKobo   ?? 0)} sub="Naira credited to recipients" icon={TrendingUp}  color="green"  />
+          <StatCard label="Total Fees Collected"   value={isLoading ? '—' : formatNaira(stats?.totalFeesKobo ?? 0)} sub="Platform revenue"             icon={DollarSign} color="purple" />
         </div>
       </div>
 
@@ -473,14 +472,14 @@ function PartnerOverview({ partnerId }: { partnerId: string }) {
             </div>
           ))}
           {!recentLoading && recent?.data.map((payout) => (
-            <div key={payout.payoutId} className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/20 transition-colors">
+            <div key={payout.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-muted/20 transition-colors">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{payout.partnerReference}</p>
                 <p className="text-xs text-muted-foreground">{timeAgo(payout.createdAt)}</p>
               </div>
               <StatusBadge status={payout.status} />
               <div className="text-right">
-                <p className="text-sm font-semibold text-foreground">{formatNaira(Number(payout.nairaAmount))}</p>
+                <p className="text-sm font-semibold text-foreground">{formatNaira(payout.nairaAmountKobo / 100)}</p>
               </div>
             </div>
           ))}

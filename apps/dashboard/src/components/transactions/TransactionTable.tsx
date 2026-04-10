@@ -8,8 +8,8 @@ import { useTransactions, useExportTransactions } from '@/hooks/useTransactions'
 import { useDashboardStore }                      from '@/store/dashboard.store';
 import { StatusBadge }                            from './StatusBadge';
 import {
-  formatNaira, formatGbp, formatDate,
-  truncateId, cn,
+  formatNaira, formatDate,
+  truncateId,
 }                                                 from '@/lib/utils';
 
 const STATUSES = ['', 'PENDING', 'PROCESSING', 'DELIVERED', 'FAILED', 'FLAGGED'];
@@ -80,7 +80,7 @@ export function TransactionTable() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                {['Reference', 'Status', 'Amount', 'Naira', 'Recipient', 'Created', 'Delivered'].map((h) => (
+                {['Reference', 'Status', 'Naira Amount', 'Fee', 'Recipient', 'Created', 'Delivered'].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     {h}
                   </th>
@@ -117,22 +117,22 @@ export function TransactionTable() {
               )}
 
               {!isLoading && data?.data.map((payout) => (
-                <tr key={payout.payoutId} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
+                <tr key={payout.id} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3">
                     <div className="font-mono text-xs text-foreground">{truncateId(payout.partnerReference)}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground mt-0.5">{truncateId(payout.payoutId)}</div>
+                    <div className="font-mono text-[10px] text-muted-foreground mt-0.5">{truncateId(payout.id)}</div>
                   </td>
                   <td className="px-4 py-3">
                     <StatusBadge status={payout.status} />
                   </td>
                   <td className="px-4 py-3 font-medium text-foreground">
-                    {formatGbp(Number(payout.fee) + (Number(payout.nairaAmount) / Number(payout.exchangeRate)))}
+                    {formatNaira(payout.nairaAmountKobo / 100)}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {formatNaira(Number(payout.nairaAmount))}
+                    {formatNaira(payout.feeKobo / 100)}
                   </td>
                   <td className="px-4 py-3 text-foreground">
-                    {payout.partnerReference}
+                    {payout.recipient?.fullName ?? '—'}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {formatDate(payout.createdAt)}

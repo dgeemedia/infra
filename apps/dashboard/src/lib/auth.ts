@@ -1,7 +1,7 @@
 // apps/dashboard/src/lib/auth.ts
 import type { NextAuthOptions } from 'next-auth';
-import CredentialsProvider       from 'next-auth/providers/credentials';
-import axios                     from 'axios';
+import CredentialsProvider      from 'next-auth/providers/credentials';
+import axios, { isAxiosError }  from 'axios';
 
 const API_URL =
   process.env.API_URL ??
@@ -37,23 +37,23 @@ export const authOptions: NextAuthOptions = {
           const payload = JSON.parse(
             Buffer.from(token.split('.')[1] ?? '', 'base64url').toString(),
           ) as {
-            sub:               string;
-            email:             string;
-            name:              string;
-            role:              string;
+            sub:                string;
+            email:              string;
+            name:               string;
+            role:               string;
             mustChangePassword: boolean;
           };
 
           return {
-            id:                payload.sub,
-            email:             payload.email,
-            name:              payload.name,
-            role:              payload.role,
+            id:                 payload.sub,
+            email:              payload.email,
+            name:               payload.name,
+            role:               payload.role,
             mustChangePassword: payload.mustChangePassword ?? false,
-            accessToken:       token,
+            accessToken:        token,
           };
         } catch (err) {
-          console.error('[auth] login failed:', axios.isAxiosError(err) ? err.response?.data : err);
+          console.error('[auth] login failed:', isAxiosError(err) ? err.response?.data : err);
           return null;
         }
       },
@@ -63,25 +63,25 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.accessToken       = (user as { accessToken?: string }).accessToken;
-        token.id                = user.id;
-        token.role              = (user as { role?: string }).role;
+        token.accessToken        = (user as { accessToken?: string }).accessToken;
+        token.id                 = user.id;
+        token.role               = (user as { role?: string }).role;
         token.mustChangePassword = (user as { mustChangePassword?: boolean }).mustChangePassword ?? false;
       }
       return token;
     },
 
     async session({ session, token }) {
-      session.accessToken        = token.accessToken as string | undefined;
-      session.user.id            = token.id    as string;
-      session.user.role          = token.role  as string;
+      session.accessToken  = token.accessToken as string | undefined;
+      session.user.id      = token.id   as string;
+      session.user.role    = token.role as string;
       // @ts-expect-error — extended session type
       session.user.mustChangePassword = token.mustChangePassword as boolean;
       return session;
     },
   },
 
-  pages: { signIn: '/login', error: '/login' },
+  pages:   { signIn: '/login', error: '/login' },
   session: { strategy: 'jwt', maxAge: 7 * 24 * 60 * 60 },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret:  process.env.NEXTAUTH_SECRET,
 };

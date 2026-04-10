@@ -4,7 +4,7 @@
 import { useState }                                    from 'react';
 import { useSession }                                  from 'next-auth/react';
 import {
-  Copy, Eye, EyeOff, Key, Loader2,
+  Copy, Key, Loader2,
   Plus, ShieldOff, AlertTriangle,
 } from 'lucide-react';
 import { useApiKeys, useGenerateApiKey, useRevokeApiKey } from '@/hooks/useApiKeys';

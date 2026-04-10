@@ -1,3 +1,4 @@
+// packages/constants/src/error-codes.ts
 // Elorge Platform Error Code Registry
 // Every error the API can return has a unique code.
 // This makes it easy for partners to handle errors programmatically.

@@ -7,7 +7,7 @@ import { useAdminTransactions } from '@/hooks/useAdmin';
 import { useAdminPartners }     from '@/hooks/useAdmin';
 import { StatusBadge }          from '@/components/transactions/StatusBadge';
 import {
-  formatNaira, formatDate, truncateId, cn,
+  formatNaira, formatDate, truncateId,
 } from '@/lib/utils';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 

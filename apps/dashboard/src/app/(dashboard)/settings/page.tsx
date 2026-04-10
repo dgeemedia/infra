@@ -2,8 +2,7 @@
 
 // apps/dashboard/src/app/(dashboard)/settings/page.tsx
 import { useState }    from 'react';
-import { useSession }  from 'next-auth/react';
-import { signOut }     from 'next-auth/react';
+import { useSession, signOut }  from 'next-auth/react';
 import { useMutation } from '@tanstack/react-query';
 import {
   Building2, Globe, Shield, KeyRound,

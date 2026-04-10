@@ -1,3 +1,4 @@
+// packages/constants/src/index.d.ts
 export * from './bank-codes';
 export * from './currencies';
 export * from './error-codes';

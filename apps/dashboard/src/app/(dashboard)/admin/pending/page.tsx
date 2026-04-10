@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api }        from '@/lib/api';
 import { formatDate, cn } from '@/lib/utils';
 import {
-  Clock, CheckCircle2, XCircle, Loader2, AlertTriangle, Users,
+  Clock, CheckCircle2, Loader2, AlertTriangle, Users,
 } from 'lucide-react';
 
 interface PendingPartner {

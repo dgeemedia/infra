@@ -3,11 +3,10 @@
 // apps/dashboard/src/app/(dashboard)/admin/transactions/page.tsx
 import { useState }             from 'react';
 import { AdminGuard }           from '@/components/admin/AdminGuard';
-import { useAdminTransactions, AdminTransaction } from '@/hooks/useAdmin';
-import { useAdminPartners }     from '@/hooks/useAdmin';
+import { useAdminTransactions, AdminTransaction, useAdminPartners } from '@/hooks/useAdmin';
 import { StatusBadge }          from '@/components/transactions/StatusBadge';
 import {
-  formatNaira, formatDate, truncateId, cn,
+  formatNaira, formatDate, truncateId,
 } from '@/lib/utils';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
