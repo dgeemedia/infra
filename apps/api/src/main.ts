@@ -1,6 +1,6 @@
 // apps/api/src/main.ts
 import { NestFactory }          from '@nestjs/core';
-import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService }         from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
@@ -28,15 +28,14 @@ async function bootstrap() {
   });
 
   // ── Global Prefix ────────────────────────────────────────
-  // Note: /v1/ is set at controller level for flexibility
   app.setGlobalPrefix('', { exclude: ['health'] });
 
   // ── Global Pipes ─────────────────────────────────────────
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist:            true,       // strip unknown properties
-      forbidNonWhitelisted: true,       // throw if unknown properties sent
-      transform:            true,       // auto-transform payloads to DTO instances
+      whitelist:            true,
+      forbidNonWhitelisted: true,
+      transform:            true,
       transformOptions: {
         enableImplicitConversion: true,
       },
@@ -53,19 +52,23 @@ async function bootstrap() {
   );
 
   // ── Swagger API Documentation ────────────────────────────
-  if (config.get<string>('app.nodeEnv') !== 'production') {
+  const swaggerEnabled =
+    config.get<string>('app.nodeEnv') !== 'production' ||
+    config.get<string>('SWAGGER_ENABLED') === 'true';
+
+  if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Elorge Partner Payout API')
       .setDescription(
         `
         The Elorge Partner Payout Platform API.
-        
+
         Use this API to initiate Nigerian Naira payouts, check payout status,
         get live exchange rates, and manage webhook subscriptions.
-        
+
         **Authentication:** All /v1/* endpoints require an API key in the Authorization header:
         \`Authorization: Bearer el_live_your_api_key\`
-        
+
         **Sandbox:** Use \`el_test_\` prefixed keys and point to:
         https://sandbox.elorge.com
         `,
