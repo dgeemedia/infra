@@ -6,38 +6,32 @@ interface DateRange {
   endDate:   string;
 }
 
-interface DashboardStore {
-  // Date range filter — shared across pages
-  dateRange:    DateRange;
-  setDateRange: (range: DateRange) => void;
-
-  // Active status filter for transaction table
-  statusFilter:    string;
-  setStatusFilter: (status: string) => void;
-
-  // Search query
-  searchQuery:    string;
-  setSearchQuery: (query: string) => void;
-
-  // Sidebar collapsed state
-  sidebarOpen:    boolean;
-  setSidebarOpen: (open: boolean) => void;
-  toggleSidebar:  () => void;
-
-  // Toast notifications
-  toasts: Toast[];
-  addToast:    (toast: Omit<Toast, 'id'>) => void;
-  removeToast: (id: string) => void;
-
-  // Reset all filters
-  resetFilters: () => void;
-}
-
 interface Toast {
   id:       string;
   title:    string;
   message?: string;
   type:     'success' | 'error' | 'info' | 'warning';
+}
+
+interface DashboardStore {
+  dateRange:    DateRange;
+  setDateRange: (range: DateRange) => void;
+
+  statusFilter:    string;
+  setStatusFilter: (status: string) => void;
+
+  searchQuery:    string;
+  setSearchQuery: (query: string) => void;
+
+  sidebarOpen:    boolean;
+  setSidebarOpen: (open: boolean) => void;
+  toggleSidebar:  () => void;
+
+  toasts:      Toast[];
+  addToast:    (toast: Omit<Toast, 'id'>) => void;
+  removeToast: (id: string) => void;
+
+  resetFilters: () => void;
 }
 
 const getDefaultDateRange = (): DateRange => {
@@ -50,6 +44,12 @@ const getDefaultDateRange = (): DateRange => {
   };
 };
 
+// Start sidebar open on desktop (≥1024px), closed on mobile
+const getDefaultSidebarOpen = (): boolean => {
+  if (typeof window === 'undefined') return true; // SSR default
+  return window.innerWidth >= 1024;
+};
+
 export const useDashboardStore = create<DashboardStore>((set) => ({
   dateRange:    getDefaultDateRange(),
   setDateRange: (range) => set({ dateRange: range }),
@@ -60,17 +60,17 @@ export const useDashboardStore = create<DashboardStore>((set) => ({
   searchQuery:    '',
   setSearchQuery: (query) => set({ searchQuery: query }),
 
-  sidebarOpen:    true,
+  sidebarOpen:    getDefaultSidebarOpen(),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar:  () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
-  toasts:      [],
+  toasts:   [],
   addToast: (toast) =>
     set((s) => ({
       toasts: [
         ...s.toasts,
         { ...toast, id: `toast_${Date.now()}` },
-      ].slice(-5), // max 5 toasts
+      ].slice(-5),
     })),
   removeToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

@@ -1,6 +1,6 @@
 // apps/dashboard/src/app/(dashboard)/layout.tsx
 import { redirect }         from 'next/navigation';
-import { getServerSession } from 'next-auth/next';   // ← next-auth/next explicitly
+import { getServerSession } from 'next-auth/next';
 import { authOptions }      from '@/lib/auth';
 import { Sidebar }          from '@/components/layout/Sidebar';
 import { Navbar }           from '@/components/layout/Navbar';
@@ -11,17 +11,16 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const session = await getServerSession(authOptions);
-
-  // console.log('[LAYOUT] session:', JSON.stringify(session));  // ← temporary
-
   if (!session) redirect('/login');
 
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      <div className="flex flex-1 flex-col transition-all duration-300 pl-60">
+      {/* On mobile the sidebar is an overlay, so no left padding.
+          On desktop (lg+) it's always visible at w-60. */}
+      <div className="flex flex-1 flex-col min-w-0 lg:pl-60 transition-all duration-300">
         <Navbar />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 sm:p-6">
           {children}
         </main>
       </div>
