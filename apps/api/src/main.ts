@@ -53,9 +53,9 @@ async function bootstrap() {
 
   // ── Swagger API Documentation ────────────────────────────
   const swaggerEnabled =
-    config.get<string>('app.nodeEnv') !== 'production' ||
-    config.get<string>('SWAGGER_ENABLED') === 'true';
-
+    process.env['NODE_ENV'] !== 'production' ||
+    process.env['SWAGGER_ENABLED'] === 'true';
+    
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Elorge Partner Payout API')
