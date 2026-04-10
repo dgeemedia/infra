@@ -1,7 +1,6 @@
 // apps/dashboard/src/app/(dashboard)/transactions/page.tsx
 'use client';
 
-import                       from 'react';
 import { Calendar }          from 'lucide-react';
 import { TransactionTable }  from '@/components/transactions/TransactionTable';
 import { useDashboardStore } from '@/store/dashboard.store';
