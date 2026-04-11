@@ -122,7 +122,7 @@ All monetary amounts use **kobo** (integer) to avoid floating-point errors:
 
 ## Fee Schedule
 
-Fees are deducted from the partner wallet alongside the payout amount
+Fees are deducted from the partner wallet alongside the payout amount:
 
 | Payout Amount     | Platform Fee |
 |-------------------|-------------|
