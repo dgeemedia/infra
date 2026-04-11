@@ -1,22 +1,39 @@
 'use client';
 
 // apps/dashboard/src/app/(auth)/login/page.tsx
-import { useState, FormEvent } from 'react';
-import { signIn }              from 'next-auth/react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
-import { cn }                  from '@/lib/utils';
+import { useState, useEffect, FormEvent } from 'react';
+import { signIn }                          from 'next-auth/react';
+import { useRouter, useSearchParams }      from 'next/navigation';
+import { Eye, EyeOff, Loader2 }            from 'lucide-react';
+import { cn }                              from '@/lib/utils';
 
 export default function LoginPage() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const wasSuspended = searchParams.get('reason') === 'suspended';
 
-  const [email,    setEmail]    = useState('');
-  const [password, setPassword] = useState('');
-  const [showPwd,  setShowPwd]  = useState(false);
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState('');
+  const [email,     setEmail]     = useState('');
+  const [password,  setPassword]  = useState('');
+  const [showPwd,   setShowPwd]   = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [error,     setError]     = useState('');
+  const [ipAddress, setIpAddress] = useState('');
+  const [userAgent, setUserAgent] = useState('');
+
+  // Collect real client IP and user agent on mount
+  useEffect(() => {
+    setUserAgent(navigator.userAgent);
+
+    fetch('https://api.ipify.org?format=json')
+      .then((r) => r.json())
+      .then((d: { ip: string }) => setIpAddress(d.ip))
+      .catch(() => {
+        fetch('https://ipapi.co/json/')
+          .then((r) => r.json())
+          .then((d: { ip: string }) => setIpAddress(d.ip))
+          .catch(() => { /* silently fail — API still records server IP */ });
+      });
+  }, []);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -26,6 +43,8 @@ export default function LoginPage() {
     const result = await signIn('credentials', {
       email,
       password,
+      ipAddress,  // ← real client IP forwarded to API
+      userAgent,  // ← real browser UA forwarded to API
       redirect: false,
     });
 

@@ -18,8 +18,11 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name:        'Credentials',
       credentials: {
-        email:    { label: 'Email',    type: 'email'    },
-        password: { label: 'Password', type: 'password' },
+        email:     { label: 'Email',      type: 'email'    },
+        password:  { label: 'Password',   type: 'password' },
+        // Hidden fields — populated by the login page before submit
+        ipAddress: { label: 'IP Address', type: 'text'     },
+        userAgent: { label: 'User Agent', type: 'text'     },
       },
 
       async authorize(credentials) {
@@ -28,7 +31,17 @@ export const authOptions: NextAuthOptions = {
         try {
           const { data } = await axios.post<LoginResponse>(
             `${API_URL}/auth/login`,
-            { email: credentials.email, password: credentials.password },
+            {
+              email:    credentials.email,
+              password: credentials.password,
+            },
+            {
+              headers: {
+                // Forward the real client IP to the API
+                'x-forwarded-for': credentials.ipAddress ?? '',
+                'user-agent':      credentials.userAgent  ?? '',
+              },
+            },
           );
 
           const token = data?.data?.accessToken;
