@@ -66,7 +66,7 @@ export default function SettingsPage() {
     queryFn:  async () => {
       if (!partnerId) return null;
       const res = await api.get<{ success: boolean; data: SessionData; timestamp: string }>(
-        `/v1/admin/partners/${partnerId}/login-sessions?pageSize=5`,
+        `/v1/partners/me/login-sessions?pageSize=5`,
       );
       return res.data.data;
     },

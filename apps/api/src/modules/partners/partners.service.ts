@@ -14,8 +14,6 @@ import { AuthService }   from '../auth/auth.service';
 import { PrismaService } from '../../database/prisma.service';
 import { VanService }    from '../van/van.service';
 
-// ── Generate a readable temporary password ────────────────────
-// Format: El-XXXXX-XXXXX  e.g. "El-Xk3mP-9qRtZ"
 function generateTempPassword(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
   const bytes = crypto.randomBytes(10);
@@ -36,7 +34,6 @@ export class PartnersService {
     private readonly vanService:  VanService,
   ) {}
 
-  // ── Create partner ────────────────────────────────────────
   async create(data: {
     name:      string;
     email:     string;
@@ -54,7 +51,6 @@ export class PartnersService {
     const tempPassword = data.password ?? generateTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, 12);
 
-    // Create the partner record
     const partner = await this.prisma.partner.create({
       data: {
         name:               data.name,
@@ -67,14 +63,6 @@ export class PartnersService {
       },
     });
 
-    // ── Provision Flutterwave VAN ──────────────────────────
-    //
-    // This gives the partner a dedicated Nigerian bank account
-    // they can wire NGN to. When funds arrive, their balance
-    // is auto-credited via the Flutterwave webhook.
-    //
-    // Runs async — don't block partner creation if FLW is slow.
-    // VAN details will be null initially, provisioned within seconds.
     const van = await this.vanService.provisionForPartner({
       partnerId:   partner.id,
       partnerName: data.name,
@@ -82,23 +70,18 @@ export class PartnersService {
     });
 
     if (van) {
-      this.logger.log(
-        `Partner ${partner.id} VAN: ${van.bankName} ${van.accountNumber}`,
-      );
+      this.logger.log(`Partner ${partner.id} VAN: ${van.bankName} ${van.accountNumber}`);
     } else {
-      this.logger.warn(
-        `Partner ${partner.id} VAN provisioning skipped (no FLW key or FLW error)`,
-      );
+      this.logger.warn(`Partner ${partner.id} VAN provisioning skipped (no FLW key or FLW error)`);
     }
 
-    // Provision API keys
     const liveKey    = await this.authService.generateApiKey(partner.id, 'Production Key', 'live');
     const sandboxKey = await this.authService.generateApiKey(partner.id, 'Sandbox Key', 'sandbox');
 
     return {
       partner,
       tempPassword,
-      van,            // null in dev/sandbox if FLW not configured
+      van,
       apiKeys: { live: liveKey, sandbox: sandboxKey },
     };
   }
@@ -192,6 +175,29 @@ export class PartnersService {
       failedPayouts:     failed,
       successRate:       totalPayouts > 0 ? Math.round((delivered / totalPayouts) * 100) : 0,
       todayPayouts:      todayCount,
+    };
+  }
+
+  // ── Login session history (partner's own) ─────────────────
+  async getLoginSessions(partnerId: string, pageSize = 5, page = 1) {
+    const skip = (page - 1) * pageSize;
+
+    const [sessions, total] = await Promise.all([
+      this.prisma.loginSession.findMany({
+        where:   { partnerId },
+        orderBy: { loggedInAt: 'desc' },
+        skip,
+        take:    pageSize,
+      }),
+      this.prisma.loginSession.count({ where: { partnerId } }),
+    ]);
+
+    return {
+      sessions,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 }

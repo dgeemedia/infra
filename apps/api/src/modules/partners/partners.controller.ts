@@ -1,6 +1,6 @@
 // apps/api/src/modules/partners/partners.controller.ts
 import {
-  Body, Controller, Get, Param, Patch, Post, HttpCode, HttpStatus,
+  Body, Controller, Get, Param, Patch, Post, Query, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
@@ -19,7 +19,6 @@ class CreatePartnerDto {
   @IsEmail()                  email!:   string;
   @IsString() @Length(2, 2)   country!: string;
 
-  // Optional — if absent the service auto-generates a secure temp password
   @IsOptional()
   @IsString() @MinLength(8)
   password?: string;
@@ -93,8 +92,6 @@ export class PartnersController {
   }
 
   // ── Change password ───────────────────────────────────────
-  // Called by the partner to set their own password.
-  // Verifies the current (temp) password first, then clears mustChangePassword.
   @Patch('me/password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Partner changes their own password' })
@@ -107,5 +104,19 @@ export class PartnersController {
       dto.currentPassword,
       dto.newPassword,
     );
+  }
+
+  // ── Own login sessions ────────────────────────────────────
+  // Uses partner JWT — no admin required
+  @Get('me/login-sessions')
+  @ApiOperation({ summary: 'Partner views their own login history' })
+  async myLoginSessions(
+    @CurrentPartner()          partner:   AuthenticatedPartner,
+    @Query('pageSize')         pageSize?: string,
+    @Query('page')             page?:     string,
+  ) {
+    const ps = pageSize ? parseInt(pageSize) : 5;
+    const p  = page     ? parseInt(page)     : 1;
+    return this.partnersService.getLoginSessions(partner.id, ps, p);
   }
 }

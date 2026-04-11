@@ -12,9 +12,6 @@ import { AdminGuard }    from '../../common/guards/admin.guard';
 import { AdminService }  from './admin.service';
 import { PrismaService } from '../../database/prisma.service';
 
-// ── Balance top-up DTO ────────────────────────────────────────
-// amountKobo: Naira in kobo (₦500.00 → 50000 kobo)
-// description: human note e.g. "Wise NGN transfer REF-12345 confirmed 2026-04-07"
 class TopUpDto {
   @IsInt()
   @IsPositive()
@@ -37,7 +34,6 @@ export class AdminController {
     private readonly prisma:       PrismaService,
   ) {}
 
-  // ── Platform stats ────────────────────────────────────────
   @Get('stats')
   @ApiOperation({ summary: 'Platform-wide stats' })
   async getStats() {
@@ -48,7 +44,6 @@ export class AdminController {
     return { ...stats, flutterwaveBalance: flwBalance };
   }
 
-  // ── Partners ──────────────────────────────────────────────
   @Get('partners')
   @ApiOperation({ summary: 'List all partners with metrics + balances' })
   async getAllPartners() {
@@ -75,7 +70,6 @@ export class AdminController {
     return this.adminService.activatePartner(id);
   }
 
-  // ── Partner balances ──────────────────────────────────────
   @Get('balances')
   @ApiOperation({ summary: 'All partner Naira balances + Flutterwave wallet' })
   async getAllBalances() {
@@ -86,25 +80,13 @@ export class AdminController {
     return { ...partnerBalances, flutterwaveBalance: flwBalance };
   }
 
-  // ── Balance top-up ────────────────────────────────────────
-  // Workflow:
-  //  1. Partner sends Naira (via local transfer / Wise NGN etc.) to your account
-  //  2. You confirm receipt
-  //  3. Call this endpoint → partner's Naira wallet is credited
-  //  4. Partner can now create payouts up to their balance
   @Post('partners/:id/balance/topup')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Credit a partner Naira wallet (admin confirms receipt)',
-    description:
-      'Call after confirming the partner\'s Naira transfer landed. '
-      + 'amountKobo is in kobo (₦500.00 = 50000). '
-      + 'description should include the transfer reference for audit.',
+    summary:     'Credit a partner Naira wallet (admin confirms receipt)',
+    description: 'amountKobo is in kobo (₦500.00 = 50000). Include transfer reference in description.',
   })
-  async topUpBalance(
-    @Param('id') id:  string,
-    @Body()      dto: TopUpDto,
-  ) {
+  async topUpBalance(@Param('id') id: string, @Body() dto: TopUpDto) {
     const partner = await this.prisma.partner.findUnique({
       where:  { id },
       select: { id: true, name: true, balanceKobo: true },
@@ -130,16 +112,15 @@ export class AdminController {
     ]);
 
     return {
-      partnerId:      id,
-      name:           partner.name,
-      creditedKobo:   dto.amountKobo,
-      creditedNaira:  (dto.amountKobo / 100).toFixed(2),
-      newBalanceKobo: balanceAfterKobo,
-      newBalanceNaira:(balanceAfterKobo / 100).toFixed(2),
+      partnerId:       id,
+      name:            partner.name,
+      creditedKobo:    dto.amountKobo,
+      creditedNaira:   (dto.amountKobo / 100).toFixed(2),
+      newBalanceKobo:  balanceAfterKobo,
+      newBalanceNaira: (balanceAfterKobo / 100).toFixed(2),
     };
   }
 
-  // ── Balance ledger ────────────────────────────────────────
   @Get('partners/:id/balance/ledger')
   @ApiOperation({ summary: 'Balance ledger for a partner' })
   async getBalanceLedger(
@@ -168,15 +149,15 @@ export class AdminController {
 
     return {
       entries: entries.map((e) => ({
-        id:               e.id,
-        type:             e.type,
-        amountKobo:       e.amountKobo,
-        amountNaira:      (e.amountKobo / 100).toFixed(2),
-        balanceAfterKobo: e.balanceAfterKobo,
-        balanceAfterNaira:(e.balanceAfterKobo / 100).toFixed(2),
-        description:      e.description,
-        payoutReference:  e.payout?.partnerReference ?? null,
-        createdAt:        e.createdAt.toISOString(),
+        id:                e.id,
+        type:              e.type,
+        amountKobo:        e.amountKobo,
+        amountNaira:       (e.amountKobo / 100).toFixed(2),
+        balanceAfterKobo:  e.balanceAfterKobo,
+        balanceAfterNaira: (e.balanceAfterKobo / 100).toFixed(2),
+        description:       e.description,
+        payoutReference:   e.payout?.partnerReference ?? null,
+        createdAt:         e.createdAt.toISOString(),
       })),
       total,
       page:       p,
@@ -185,7 +166,6 @@ export class AdminController {
     };
   }
 
-  // ── Transactions ──────────────────────────────────────────
   @Get('transactions')
   @ApiOperation({ summary: 'All transactions across all partners' })
   async getAllTransactions(
@@ -203,7 +183,6 @@ export class AdminController {
     });
   }
 
-  // ── Flagged payouts ───────────────────────────────────────
   @Get('flagged')
   @ApiOperation({ summary: 'All flagged payouts needing review' })
   async getFlagged() {
@@ -224,7 +203,6 @@ export class AdminController {
     return this.adminService.rejectFlaggedPayout(id);
   }
 
-  // ── Inbox ─────────────────────────────────────────────────
   @Get('inbox')
   @ApiOperation({ summary: 'Admin inbox — partner interest submissions' })
   async getInbox(
@@ -237,73 +215,62 @@ export class AdminController {
     );
   }
 
-// Add this endpoint inside AdminController class:
-@Get('partners/:id/login-sessions')
-@ApiOperation({ summary: 'Login history for a partner — IPs and devices' })
-async getLoginSessions(
-  @Param('id')       id:        string,
-  @Query('page')     page?:     string,
-  @Query('pageSize') pageSize?: string,
-) {
-  const p  = page     ? parseInt(page)     : 1;
-  const ps = pageSize ? parseInt(pageSize) : 50;
+  // ── Login sessions per partner ────────────────────────────
+  @Get('partners/:id/login-sessions')
+  @ApiOperation({ summary: 'Login history for a specific partner' })
+  async getLoginSessions(
+    @Param('id')       id:        string,
+    @Query('page')     page?:     string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    const p  = page     ? parseInt(page)     : 1;
+    const ps = pageSize ? parseInt(pageSize) : 50;
 
-  const [sessions, total] = await Promise.all([
-    this.prisma.loginSession.findMany({
-      where:   { partnerId: id },
-      orderBy: { loggedInAt: 'desc' },
-      skip:    (p - 1) * ps,
-      take:    ps,
-    }),
-    this.prisma.loginSession.count({ where: { partnerId: id } }),
-  ]);
+    const [sessions, total] = await Promise.all([
+      this.prisma.loginSession.findMany({
+        where:   { partnerId: id },
+        orderBy: { loggedInAt: 'desc' },
+        skip:    (p - 1) * ps,
+        take:    ps,
+        include: { partner: { select: { id: true, name: true, email: true } } },
+      }),
+      this.prisma.loginSession.count({ where: { partnerId: id } }),
+    ]);
 
-  return {
-    sessions,
-    total,
-    page:       p,
-    pageSize:   ps,
-    totalPages: Math.ceil(total / ps),
-  };
+    return { sessions, total, page: p, pageSize: ps, totalPages: Math.ceil(total / ps) };
+  }
+
+  // ── All login sessions across all partners ────────────────
+  @Get('login-sessions')
+  @ApiOperation({ summary: 'All login sessions across all partners' })
+  async getAllLoginSessions(
+    @Query('page')      page?:      string,
+    @Query('pageSize')  pageSize?:  string,
+    @Query('partnerId') partnerId?: string,
+    @Query('ipAddress') ipAddress?: string,
+  ) {
+    const p  = page     ? parseInt(page)     : 1;
+    const ps = pageSize ? parseInt(pageSize) : 50;
+
+    const [sessions, total] = await Promise.all([
+      this.prisma.loginSession.findMany({
+        where: {
+          ...(partnerId ? { partnerId }                           : {}),
+          ...(ipAddress ? { ipAddress: { contains: ipAddress } } : {}),
+        },
+        orderBy: { loggedInAt: 'desc' },
+        skip:    (p - 1) * ps,
+        take:    ps,
+        include: { partner: { select: { id: true, name: true, email: true } } },
+      }),
+      this.prisma.loginSession.count({
+        where: {
+          ...(partnerId ? { partnerId }                           : {}),
+          ...(ipAddress ? { ipAddress: { contains: ipAddress } } : {}),
+        },
+      }),
+    ]);
+
+    return { sessions, total, page: p, pageSize: ps, totalPages: Math.ceil(total / ps) };
+  }
 }
-
-// Also add a platform-wide endpoint — all sessions across all partners
-@Get('login-sessions')
-@ApiOperation({ summary: 'All login sessions across all partners' })
-async getAllLoginSessions(
-  @Query('page')      page?:      string,
-  @Query('pageSize')  pageSize?:  string,
-  @Query('partnerId') partnerId?: string,
-  @Query('ipAddress') ipAddress?: string,
-) {
-  const p     = page     ? parseInt(page)     : 1;
-  const ps    = pageSize ? parseInt(pageSize) : 50;
-
-  const where: Record<string, unknown> = {};
-  if (partnerId) where['partnerId'] = partnerId;
-  if (ipAddress) where['ipAddress'] = { contains: ipAddress };
-
-  const [sessions, total] = await Promise.all([
-    this.prisma.loginSession.findMany({
-      where,
-      orderBy: { loggedInAt: 'desc' },
-      skip:    (p - 1) * ps,
-      take:    ps,
-      include: {
-        partner: { select: { id: true, name: true, email: true } },
-      },
-    }),
-    this.prisma.loginSession.count({ where }),
-  ]);
-
-  return {
-    sessions,
-    total,
-    page:       p,
-    pageSize:   ps,
-    totalPages: Math.ceil(total / ps),
-  };
-}
-
-}
-
