@@ -236,4 +236,74 @@ export class AdminController {
       pageSize ? parseInt(pageSize) : 20,
     );
   }
+
+// Add this endpoint inside AdminController class:
+@Get('partners/:id/login-sessions')
+@ApiOperation({ summary: 'Login history for a partner — IPs and devices' })
+async getLoginSessions(
+  @Param('id')       id:        string,
+  @Query('page')     page?:     string,
+  @Query('pageSize') pageSize?: string,
+) {
+  const p  = page     ? parseInt(page)     : 1;
+  const ps = pageSize ? parseInt(pageSize) : 50;
+
+  const [sessions, total] = await Promise.all([
+    this.prisma.loginSession.findMany({
+      where:   { partnerId: id },
+      orderBy: { loggedInAt: 'desc' },
+      skip:    (p - 1) * ps,
+      take:    ps,
+    }),
+    this.prisma.loginSession.count({ where: { partnerId: id } }),
+  ]);
+
+  return {
+    sessions,
+    total,
+    page:       p,
+    pageSize:   ps,
+    totalPages: Math.ceil(total / ps),
+  };
 }
+
+// Also add a platform-wide endpoint — all sessions across all partners
+@Get('login-sessions')
+@ApiOperation({ summary: 'All login sessions across all partners' })
+async getAllLoginSessions(
+  @Query('page')      page?:      string,
+  @Query('pageSize')  pageSize?:  string,
+  @Query('partnerId') partnerId?: string,
+  @Query('ipAddress') ipAddress?: string,
+) {
+  const p     = page     ? parseInt(page)     : 1;
+  const ps    = pageSize ? parseInt(pageSize) : 50;
+
+  const where: Record<string, unknown> = {};
+  if (partnerId) where['partnerId'] = partnerId;
+  if (ipAddress) where['ipAddress'] = { contains: ipAddress };
+
+  const [sessions, total] = await Promise.all([
+    this.prisma.loginSession.findMany({
+      where,
+      orderBy: { loggedInAt: 'desc' },
+      skip:    (p - 1) * ps,
+      take:    ps,
+      include: {
+        partner: { select: { id: true, name: true, email: true } },
+      },
+    }),
+    this.prisma.loginSession.count({ where }),
+  ]);
+
+  return {
+    sessions,
+    total,
+    page:       p,
+    pageSize:   ps,
+    totalPages: Math.ceil(total / ps),
+  };
+}
+
+}
+

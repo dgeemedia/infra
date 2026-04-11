@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useSession }  from 'next-auth/react';
 import {
   LayoutDashboard, ArrowRightLeft, Key,
-  Webhook, Settings, ChevronLeft, X,
+  Webhook, Settings, ChevronLeft, X, Monitor,
   Users, AlertTriangle, ShieldCheck, MessageSquare, Clock,
 } from 'lucide-react';
 
@@ -30,6 +30,7 @@ const ADMIN_NAV = [
   { href: '/admin/messages',     label: 'Messages',          icon: MessageSquare  },
   { href: '/admin/pending',      label: 'Pending Review',    icon: Clock          },
   { href: '/admin/settings',     label: 'Admin Settings',    icon: Settings       },
+  { href: '/admin/sessions',     label: 'Login Sessions',    icon: Monitor },
 ];
 
 export function Sidebar() {

@@ -23,30 +23,6 @@ import { PayoutsRepository }              from './payouts.repository';
 import { PAYOUT_QUEUE }                   from '../../queues/payout.queue';
 import { PrismaService }                  from '../../database/prisma.service';
 
-// ── Fee schedule ──────────────────────────────────────────────
-//
-//  Tier thresholds and fees are in kobo (1 NGN = 100 kobo).
-//  Flutterwave charges Elorge ~₦26.88 per transfer.
-//  Elorge profit per payout = fee - ₦26.88.
-//
-//  ≤ ₦50,000     → ₦150  fee  (15,000 kobo)
-//  ≤ ₦200,000    → ₦250  fee  (25,000 kobo)
-//  ≤ ₦1,000,000  → ₦400  fee  (40,000 kobo)
-//  > ₦1,000,000  → ₦600  fee  (60,000 kobo)
-//
-function calculateFeeKobo(nairaAmountKobo: number): number {
-  const TIERS: Array<{ maxKobo: number; feeKobo: number }> = [
-    { maxKobo: 5_000_000,   feeKobo: 15_000 },
-    { maxKobo: 20_000_000,  feeKobo: 25_000 },
-    { maxKobo: 100_000_000, feeKobo: 40_000 },
-    { maxKobo: Infinity,    feeKobo: 60_000 },
-  ];
-  for (const tier of TIERS) {
-    if (nairaAmountKobo <= tier.maxKobo) return tier.feeKobo;
-  }
-  return 60_000;
-}
-
 function koboToNaira(kobo: number): string {
   return `₦${(kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
 }
@@ -63,6 +39,23 @@ export class PayoutsService {
     private readonly configService: ConfigService,
     @InjectQueue(PAYOUT_QUEUE) private readonly payoutQueue: Queue,
   ) {}
+
+  // ── Fee calculator — reads tiers from config/env ──────────────
+  private calculateFeeKobo(nairaAmountKobo: number): number {
+    const tiers = this.configService.get<Array<{ maxKobo: number; feeKobo: number }>>(
+      'app.feeTiers',
+    ) ?? [
+      { maxKobo: 5_000_000,   feeKobo: 15_000 },
+      { maxKobo: 20_000_000,  feeKobo: 25_000 },
+      { maxKobo: 100_000_000, feeKobo: 40_000 },
+      { maxKobo: Infinity,    feeKobo: 60_000 },
+    ];
+
+    for (const tier of tiers) {
+      if (nairaAmountKobo <= tier.maxKobo) return tier.feeKobo;
+    }
+    return tiers[tiers.length - 1]?.feeKobo ?? 60_000;
+  }
 
   // ══════════════════════════════════════════════════════════
   //  CREATE PAYOUT — POST /v1/payouts
@@ -88,7 +81,7 @@ export class PayoutsService {
 
     // ── 3. Calculate fee ──────────────────────────────────
     const nairaAmountKobo = dto.nairaAmountKobo;
-    const feeKobo         = calculateFeeKobo(nairaAmountKobo);
+    const feeKobo         = this.calculateFeeKobo(nairaAmountKobo);
     const totalDebitKobo  = nairaAmountKobo + feeKobo;
 
     // ── 4. Balance check ──────────────────────────────────

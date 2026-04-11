@@ -48,12 +48,12 @@ export class RecipientDto {
  *   Integer arithmetic eliminates floating-point rounding errors in
  *   financial calculations. ₦250,000.00 → nairaAmountKobo: 25000000
  *
- * FEES (as of launch):
- *   ≤ ₦50,000     → ₦150  fee
- *   ≤ ₦200,000    → ₦250  fee
- *   ≤ ₦1,000,000  → ₦400  fee
- *   > ₦1,000,000  → ₦600  fee
- *   Flutterwave charges Elorge ~₦27. Elorge profit = fee - ₦27.
+ * FEES (configured via environment — current schedule):
+ *   ≤ ₦50,000     → ₦150  fee  (FEE_TIER1)
+ *   ≤ ₦200,000    → ₦250  fee  (FEE_TIER2)
+ *   ≤ ₦1,000,000  → ₦400  fee  (FEE_TIER3)
+ *   > ₦1,000,000  → ₦600  fee  (FEE_TIER4)
+ *   Fees are adjusted via .env without code changes.
  */
 export class CreatePayoutDto {
   @ApiProperty({

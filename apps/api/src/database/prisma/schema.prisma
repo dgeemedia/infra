@@ -19,15 +19,16 @@ model Partner {
   passwordHash        String?
   role                PartnerRole          @default(PARTNER)
   balanceKobo         Int                  @default(0)
-  mustChangePassword  Boolean              @default(false)
   flwVanAccountNumber String?
-  flwVanBankName      String?
   flwVanBankCode      String?
-  flwVanReference     String?              @unique
+  flwVanBankName      String?
   flwVanCreatedAt     DateTime?            @db.Timestamptz(6)
+  flwVanReference     String?              @unique
+  mustChangePassword  Boolean              @default(false)
   apiKeys             ApiKey[]
   auditLogs           AuditLog[]
   balanceTransactions BalanceTransaction[]
+  loginSessions       LoginSession[]
   notifications       Notification[]
   payouts             Payout[]
   webhookConfigs      WebhookConfig[]
@@ -53,21 +54,20 @@ model ApiKey {
 }
 
 model Payout {
-  id                String   @id @default(uuid())
-  partnerId         String
-  partnerReference  String
-  nairaAmountKobo   Int
-  feeKobo           Int      @default(0)
-  exchangeRateAudit Decimal? @db.Decimal(10, 4)
-  status            PayoutStatus @default(PENDING)
-  pspReference      String?
-  failureReason     String?
-  bankSessionId     String?
-  narration         String?
-  deliveredAt       DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
+  id                  String               @id @default(uuid())
+  partnerId           String
+  partnerReference    String
+  status              PayoutStatus         @default(PENDING)
+  pspReference        String?
+  failureReason       String?
+  bankSessionId       String?
+  narration           String?
+  deliveredAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  exchangeRateAudit   Decimal?             @db.Decimal(10, 4)
+  feeKobo             Int                  @default(0)
+  nairaAmountKobo     Int
   balanceTransactions BalanceTransaction[]
   partner             Partner              @relation(fields: [partnerId], references: [id])
   recipient           Recipient?
@@ -188,6 +188,22 @@ model BalanceTransaction {
   @@map("balance_transactions")
 }
 
+model LoginSession {
+  id         String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  partnerId  String
+  ipAddress  String
+  userAgent  String?
+  city       String?
+  country    String?
+  loggedInAt DateTime @default(now()) @db.Timestamptz(6)
+  partner    Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([partnerId])
+  @@index([ipAddress])
+  @@index([loggedInAt])
+  @@map("login_sessions")
+}
+
 enum PartnerRole {
   ADMIN
   PARTNER
@@ -245,7 +261,7 @@ enum NotificationType {
   WEBHOOK_FAILED
   API_KEY_CREATED
   ACCOUNT_SUSPENDED
+  SYSTEM
   BALANCE_LOW
   BALANCE_CREDITED
-  SYSTEM
 }

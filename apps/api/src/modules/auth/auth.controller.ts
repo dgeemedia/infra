@@ -1,21 +1,13 @@
 // apps/api/src/modules/auth/auth.controller.ts
 import {
-  Body, Controller, HttpCode, HttpStatus, Post, UnauthorizedException,
+  Body, Controller, HttpCode, HttpStatus, Post,
+  UnauthorizedException, Ip, Headers,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength } from 'class-validator';
 
 import { Public }      from '../../common/decorators/public.decorator';
 import { AuthService } from './auth.service';
-
-class LoginDto {
-  @IsEmail()
-  email!: string;
-
-  @IsString()
-  @MinLength(8)
-  password!: string;
-}
+import { LoginDto }    from './auth.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -26,12 +18,21 @@ export class AuthController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Dashboard login — returns JWT access token' })
-  async login(@Body() dto: LoginDto): Promise<{ accessToken: string }> {
-    const result = await this.authService.loginDashboard(dto.email, dto.password);
+  async login(
+    @Body()                     dto:          LoginDto,
+    @Ip()                       ip:           string,
+    @Headers('x-forwarded-for') forwardedFor: string | undefined,
+    @Headers('user-agent')      userAgent:    string | undefined,
+  ): Promise<{ accessToken: string }> {
+    const resolvedIp = forwardedFor?.split(',')[0]?.trim() ?? ip ?? 'unknown';
 
-    // Return a proper 401 (not a 500) so clients get a meaningful status code.
-    // NextAuth's authorize() will catch any non-2xx and return null, which
-    // is correct, but a 401 makes debugging much easier.
+    const result = await this.authService.loginDashboard(
+      dto.email,
+      dto.password,
+      resolvedIp,
+      userAgent,
+    );
+
     if (!result) {
       throw new UnauthorizedException('Invalid email or password');
     }
